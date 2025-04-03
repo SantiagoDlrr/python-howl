@@ -2,11 +2,10 @@ import sys
 import os
 import json
 import uuid
-# import requests # will need for local integration, maybe lol
 import whisper
 import uvicorn
 import logging
-from datetime import date # Added for dynamic date
+from datetime import date 
 
 # --- Import Google Gemini ---
 import google.generativeai as genai
@@ -43,9 +42,6 @@ app.add_middleware(
 )
 
 # --- Gemini API Configuration ---
-# IMPORTANT: Replace with your actual API key.
-# SECURITY WARNING: Hardcoding keys is not recommended for production. Use environment variables.
-GEMINI_API_KEY = ""
 
 import os
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -135,36 +131,36 @@ def create_llm_prompt(transcript_text: str) -> str:
     now including a 'riskWords' field in the JSON.
     """
     prompt = f"""
-You are an expert call analyst. Based on the provided call transcript, generate a structured report containing the following sections:
-- Feedback
-- Key Topics
-- Emotions
-- Sentiment
-- Output (Resolution)
-- Risk Words (any escalation threats, negative expressions, cancellations, or other 'risky' words the customer used)
-- Summary
+        You are an expert call analyst. Based on the provided call transcript, generate a structured report containing the following sections:
+        - Feedback
+        - Key Topics
+        - Emotions
+        - Sentiment
+        - Output (Resolution)
+        - Risk Words (any escalation threats, negative expressions, cancellations, or other 'risky' words the customer used)
+        - Summary
 
-Analyze the transcript below:
---- START TRANSCRIPT ---
-{transcript_text}
---- END TRANSCRIPT ---
+        Analyze the transcript below:
+        --- START TRANSCRIPT ---
+        {transcript_text}
+        --- END TRANSCRIPT ---
 
-Generate your analysis strictly in the following JSON format. Do not include any text before or after the JSON object:
+        Generate your analysis strictly in the following JSON format. Do not include any text before or after the JSON object:
 
-{{
-  "feedback": "Specific feedback from or about the call.",
-  "keyTopics": [
-    "List of main topics in the conversation."
-  ],
-  "emotions": [
-    "List of the primary emotions the speaker(s) showed."
-  ],
-  "sentiment": "Overall sentiment of the call. E.g., Negative, Positive, Neutral, Mixed, with short reasoning if necessary.",
-  "output": "Next steps or resolution details from the conversation.",
-  "riskWords": "Highlight if any language is escalatory or signals risk (if none, say 'None')",
-  "summary": "One or two-sentence summary of the entire call."
-}}
-"""
+        {{
+        "feedback": "Specific feedback from or about the call.",
+        "keyTopics": [
+            "List of main topics in the conversation."
+        ],
+        "emotions": [
+            "List of the primary emotions the speaker(s) showed."
+        ],
+        "sentiment": "Overall sentiment of the call. E.g., Negative, Positive, Neutral, Mixed, with short reasoning if necessary.",
+        "output": "Next steps or resolution details from the conversation.",
+        "riskWords": "Highlight if any language is escalatory or signals risk (if none, say 'None')",
+        "summary": "One or two-sentence summary of the entire call."
+        }}
+        """
     return prompt
 
 # For consistent error fallback, ensure we have all 7 keys
@@ -292,69 +288,6 @@ async def upload_audio(file: UploadFile = File(...)):
             except OSError as rm_err:
                 logger.warning(f"Could not remove temp file {temp_filename} after error: {rm_err}")
         raise HTTPException(status_code=500, detail=f"Whisper transcription failed: {e}")
-
-
-    # --- Use hardcoded transcript for testing if needed ---
-    # Uncomment the block below to bypass Whisper during development/testing
-    """
-    logger.warning("USING HARDCODED TRANSCRIPT TEXT FOR TESTING!")
-    transcript_text = \"\"\"Alex:
-    Good morning! This is Alex calling from Quick Tech Solutions. How are you doing today?
-
-    Jamie:
-    Are you seriously asking me that? After everything your company has put me through? I’ve spent hours on hold, been transferred a dozen times, and still have no solution.
-
-    Alex:
-    I'm really sorry to hear that, Jamie. I’d be happy to look into this and try to resolve it right away. Can you tell me a bit more about what happened?
-
-    Jamie:
-    What happened is I bought one of your so-called smart dishwashers and it broke after five days. Five. Days. Since then, I’ve been promised a replacement, a refund, a technician—you name it. None of that happened. I’ve been lied to, ignored, and completely disrespected as a customer.
-
-    Alex:
-    That’s absolutely not the experience we want our customers to have. Let me check your file and—
-
-    Jamie:
-    Don’t even bother reading off the same script everyone else has. I’ve heard it all. We're escalating it. We'll get back to you. Thank you for your patience. It’s insulting at this point. Just admit you sold me a broken product and don’t want to fix it.
-
-    Alex:
-    I understand you're upset, and you have every right to be. What you’ve experienced is unacceptable. I’ll personally make sure this gets handled today.
-
-    Jamie:
-    You said that last week. And the week before. Every time someone says they’re taking care of it, nothing happens. I’m done playing nice. If I don’t get a refund within 48 hours, I’m filing a complaint with the Better Business Bureau, disputing the charge with my bank, and leaving a detailed review everywhere I can.
-
-    Alex:
-    That’s completely understandable. Let me at least get the process moving again while we're on the call. I’ll also put in a high-priority note so your case gets addressed within the hour.
-
-    Jamie:
-    I’ll believe it when I see it. So far, all I’ve gotten from Quick Tech Solutions is broken promises and endless apologies that mean nothing.
-
-    Alex:
-    You shouldn’t have to go through that. I’m genuinely sorry. I’ll stay on top of this until you receive confirmation. You have my word.
-
-    Jamie:
-    Your word doesn’t mean anything to me unless I see results. I’ve wasted enough time on this disaster.
-
-    Alex:
-    Understood. You’ll hear back from me directly before the end of the day with a resolution.
-
-    Jamie:
-    Good. You’d better follow through this time.
-
-    Alex:
-    Thank you for your time, Jamie. I really do appreciate your patience.
-
-    Jamie:
-    I’m not being patient. I’m being very clear. Fix it.
-
-    Alex:
-    Got it. You’ll hear from me soon.
-
-    Jamie:
-    You’d better. Goodbye.
-    \"\"\"
-    """
-    # --- End hardcoded transcript ---
-
 
     # 3) OCI Sentiment Analysis (optional)
     oci_emotion_text = "N/A"
@@ -615,3 +548,4 @@ if __name__ == "__main__":
 
     logger.info("Starting FastAPI server on host 0.0.0.0, port 8000...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

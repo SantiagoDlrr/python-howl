@@ -1,7 +1,0 @@
-
-
-fastapi==0.95.0
-uvicorn
-psycopg2-binary
-pydantic
-

@@ -1,6 +1,0 @@
-requests
-python-multipart
-docstring_parser
-oci
-google-generativeai
-
