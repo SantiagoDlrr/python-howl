@@ -1,0 +1,5 @@
+Go to oci,
+generate config key_file
+get api key_file
+make a .oci folder in home or root
+
