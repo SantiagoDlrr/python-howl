@@ -1,5 +1,3 @@
-Here’s an improved and more polished version of your `instructions.md`, with better structure, grammar, and formatting for clarity and professionalism:
-
 ---
 
 # 📘 Project Instructions
