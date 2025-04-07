@@ -1,11 +1,11 @@
----
+
 
 # 📘 Project Instructions
 
 ## ⚙️ Docker Compose Commands
 
 Use the following commands to manage the FastAPI backend using Docker Compose:
----
+
 
 ```bash
 # Build the Docker image
