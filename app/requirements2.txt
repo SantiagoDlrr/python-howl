@@ -1,0 +1,10 @@
+fastapi==0.95.0
+uvicorn
+psycopg2-binary
+pydantic
+requests
+python-multipart
+docstring_parser
+oci
+google-generativeai
+
