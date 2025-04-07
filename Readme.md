@@ -15,7 +15,7 @@ docker-compose build
 docker-compose up
 
 # start and build
-docker- compose ip --build
+docker-compose up --build
 
 # Start containers in the background (detached mode)
 docker-compose up -d
