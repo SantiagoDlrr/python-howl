@@ -1,0 +1,98 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ main, master ] # Adjust if your main branch has a different name
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest # Use Linux runner as ffmpeg is easier to install
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip' # Cache pip dependencies
+
+    - name: Install system dependencies (ffmpeg)
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y ffmpeg
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # Install dev dependencies if you have requirements-dev.txt
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        # Or install Robot Framework directly if not using requirements-dev.txt
+        # pip install robotframework robotframework-requests robotframework-jsonlibrary flake8
+
+    - name: Lint with flake8 (Optional)
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Set up OCI configuration (Optional - If tests hit OCI)
+      # This step creates the ~/.oci configuration needed by the SDK if using API Key auth
+      # Ensure you have the required secrets configured in GitHub repo settings
+      if: env.OCI_USER_OCID != '' # Only run if OCI secrets seem present
+      run: |
+        echo "Creating OCI configuration directory..."
+        mkdir -p ~/.oci
+        echo "Creating OCI config file from secrets..."
+        echo "[DEFAULT]" > ~/.oci/config
+        echo "user=${{ secrets.OCI_USER_OCID }}" >> ~/.oci/config
+        echo "fingerprint=${{ secrets.OCI_FINGERPRINT }}" >> ~/.oci/config
+        echo "tenancy=${{ secrets.OCI_TENANCY_OCID }}" >> ~/.oci/config
+        echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
+        # Assuming OCI_PRIVATE_KEY secret contains the key file content
+        echo "key_file=~/.oci/oci_api_key.pem" >> ~/.oci/config
+        echo "Writing OCI private key file..."
+        echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+        echo "Setting private key file permissions..."
+        chmod 600 ~/.oci/oci_api_key.pem
+        echo "OCI config setup complete."
+      env:
+        OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }} # Check if secret exists
+
+    - name: Run Robot Framework tests
+      run: |
+        robot tests/ # Point to your tests directory or specific .robot file
+      env:
+        # Pass secrets as environment variables for the tests/application
+        # Make sure these secrets are configured in your GitHub repository settings
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        # OCI SDK will automatically pick up ~/.oci/config if created in the previous step
+        # No need to set OCI env vars here if using the config file method above
+        # Set WHISPER_MODEL_SIZE if needed, default is 'base' in your code
+        # WHISPER_MODEL_SIZE: 'tiny' # Use 'tiny' for faster CI tests if acceptable
+
+        # You might need to define the base URL for your API tests if they don't run the server
+        # For CI, you typically test against a running instance OR mock heavily.
+        # If testing a live instance isn't part of this CI job, Robot needs to interact
+        # with the code directly (less common for API testing) or you need service containers.
+        # Assuming tests will hit localhost if the app were run (needs adjustment based on test strategy)
+        API_BASE_URL: http://127.0.0.1:8000 # Example, adjust in your Robot tests
+
+    # --- Optional: Add Build/Deploy Steps Here ---
+    # - name: Build Docker image (Example)
+    #   run: docker build -t my-image-name:${{ github.sha }} .
+
+    # - name: Log in to Docker Hub (Example)
+    #   uses: docker/login-action@v3
+    #   with:
+    #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+    #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # - name: Push Docker image (Example)
+    #   run: docker push my-image-name:${{ github.sha }}
