@@ -25,14 +25,13 @@ jobs:
         sudo apt-get update -y
         sudo apt-get install -y ffmpeg
 
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        # Install dev dependencies if you have requirements-dev.txt
-        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-        # Or install Robot Framework directly if not using requirements-dev.txt
-        # pip install robotframework robotframework-requests robotframework-jsonlibrary flake8
+    # - name: Install Python dependencies
+    #   run: |
+    #     python -m pip install --upgrade pip
+    #     pip install -r requirements2.txt
+    #     # Install dev dependencies if you have requirements-dev.txt
+    #     if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
 
     - name: Lint with flake8 (Optional)
       run: |
