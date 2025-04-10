@@ -3,3 +3,44 @@
 config
 a00835462@tec.mx_2025-03-12T22_39_39.019Z.pem
 .env
+
+
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment files
+.env
+.env.*
+
+# Temporary directories
+temp_audio/
+transcript_storage/
+
+# OCI credentials (if stored locally)
+.oci/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dependency directories
+venv/
+env/
+.venv/
+*.egg-info/
+
+# Model caches (optional, but can be large)
+# You might need these if you cache models locally outside the project dir
+# Adjust paths based on your system if needed
+# $HOME/.cache/torch/
+# $HOME/.cache/huggingface/
+# $HOME/.cache/whisperx/
+# $HOME/.cache/pyannote/

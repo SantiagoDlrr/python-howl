@@ -1,0 +1,5 @@
+robotframework
+robotframework-requests # For API testing
+robotframework-jsonlibrary # For validating JSON responses
+flake8 # For linting (optional)
+# Add other dev tools if needed

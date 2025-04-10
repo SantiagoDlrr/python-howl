@@ -19,6 +19,9 @@ RUN pip install  -r requirements2.txt
 COPY requirements3.txt .
 RUN pip install --no-cache-dir -r requirements3.txt
 
+COPY requirements-dev.txt .
+RUN pip install  -r requirements-dev.txt
+
 # Copy app files into the container
 COPY . .
 

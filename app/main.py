@@ -544,6 +544,19 @@ def test_oci_call():
         return {"error": str(ex)}
 
 
+
+import unittest
+
+class TestOciCall():
+    print("Testing OCI call")
+
+    def test_oci_no_lang(self):
+        print("Test of oci with no lang...")
+
+    def test_oci_no_lang(self):
+        print("Test of oci with no lang...")
+
+
 # ---------- Run server if executed directly ----------
 if __name__ == "__main__":
     # Pre-run checks
