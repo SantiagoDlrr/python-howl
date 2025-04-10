@@ -122,7 +122,6 @@ except Exception as e:
     # Depending on severity, you might want to exit or let it run with transcription disabled
     # sys.exit("ERROR: Failed to load transcription model. Server stopping.")
 
-
 @app.get("/")
 def read_root():
     return {"message": "Audio Analysis API Ready"}
