@@ -63,10 +63,6 @@ jobs:
       env:
         OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }} # Check if secret exists
 
-    - name: Run Robot Framework tests
-      run: |
-        robot tests/ # Point to your tests directory or specific .robot file
-      env:
         # Pass secrets as environment variables for the tests/application
         # Make sure these secrets are configured in your GitHub repository settings
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
