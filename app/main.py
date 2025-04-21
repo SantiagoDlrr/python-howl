@@ -68,7 +68,7 @@ class TranscriptionEngine(str, Enum):
     gemini = "gemini"
 
 class RuntimeSettings(BaseModel):
-    transcription_engine: TranscriptionEngine = TranscriptionEngine.whisperx
+    transcription_engine: TranscriptionEngine = TranscriptionEngine.gemini
     llm_model: str = "gemini-1.5-flash"
 
 runtime_settings = RuntimeSettings()
@@ -95,44 +95,78 @@ def get_gemini_model(model_name: str):
 
 
 # ---------------------------------------------------------------------------
-# Gemini audio helper  (replace the existing definition)
-from google.generativeai.types import content_types  # add near other imports
+# Gemini audio helper  
+
+import os, json, logging
+from typing import List, Dict, Any
+import google.generativeai as genai
+from google.generativeai import GenerationConfig    
+
+logger = logging.getLogger(__name__)
+
+SYS_PROMPT = (
+    "You are a speech‑to‑text engine. Return ONLY valid JSON of the form\n"
+    '{ "segments": ['
+    '{"speaker":"SPEAKER_00","text":"…","start":0.123,"end":0.456}'
+    "] }\n"
+    "• Use SPEAKER_00, SPEAKER_01… (or real names if you can)\n"
+    "• start/end are seconds from 0.0\n"
+    "• No prose, markdown, or code fences."
+)
 
 def transcribe_with_gemini(audio_path: str, model_name: str) -> List[Dict[str, Any]]:
-    """
-    Sends the audio file to Gemini as an 'inline_data' blob.
-    Gemini returns plain text; we wrap it in a single UNKNOWN‑speaker turn.
-    """
-    print("Transcribing with Gemini...")
-    model = get_gemini_model(model_name)
+    # ---- 1. build the model with system_instruction + JSON mode -----------
+    model = genai.GenerativeModel(
+        model_name,
+        system_instruction=SYS_PROMPT,                    # 👈 system prompt
+        generation_config=GenerationConfig(
+            response_mime_type="application/json"         # 👈 JSON‑only
+        ),
+    )
 
-    # decide MIME type from file extension (very simple – extend if needed)
+    # ---- 2. wrap the audio + mandatory text in ONE user message ----------
     ext = os.path.splitext(audio_path)[1].lower()
     mime = {
-        ".wav": "audio/wav",
-        ".mp3": "audio/mpeg",
-        ".m4a": "audio/mp4",
-        ".flac": "audio/flac",
-        ".ogg": "audio/ogg",
+        ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+        ".flac": "audio/flac", ".ogg": "audio/ogg",
     }.get(ext, "application/octet-stream")
 
     with open(audio_path, "rb") as f:
-        blob_part = {
-            "inline_data": {                 # 👈 proper wrapper
-                "mime_type": mime,
-                "data": f.read()
+        audio_blob = {"inline_data": {"mime_type": mime, "data": f.read()}}
+
+    prompt = [
+        "Transcribe this call to JSON.",   # <- required text part&#8203;:contentReference[oaicite:2]{index=2}
+        audio_blob,
+    ]
+
+    # ---- 3. call the model ------------------------------------------------
+    resp = model.generate_content(prompt)
+
+    # ---- 4. normalise -----------------------------------------------------
+    try:
+        data = json.loads(resp.text)                       # clean JSON
+        return [
+            {
+                "speaker": seg["speaker"],
+                "text": seg["text"].strip(),
+                "start": round(float(seg["start"]), 3),
+                "end":   round(float(seg["end"]),   3),
             }
-        }
+            for seg in data["segments"]
+        ]
+    except Exception as e:
+        logger.error("Gemini JSON parse failed", exc_info=True)
+        return [{
+            "speaker": "SYSTEM",
+            "text": f"[Gemini transcription failed: {e}]",
+            "start": 0.0, "end": 0.0,
+        }]
 
-    # Gemini expects a list of “contents”; give it one with our audio part.
-    response = model.generate_content([blob_part])
 
-    return [{
-        "speaker": "UNKNOWN",
-        "text": (response.text or "").strip(),
-        "start": 0.0,
-        "end":   0.0,
-    }]
+
+
+
+
 
 
 
@@ -175,21 +209,21 @@ def root():
 # Helpers for LLM report
 def create_llm_prompt(text: str) -> str:
     return f"""
-You are an expert call analyst. Produce JSON with:
-{{
-"feedback": "...",
-"keyTopics": [...],
-"emotions": [...],
-"sentiment": "...",
-"output": "...",
-"riskWords": "...",
-"summary": "..."
-}}
-Transcript:
---- START ---
-{text}
---- END ---
-"""
+    You are an expert call analyst. Produce JSON with:
+    {{
+    "feedback": "...",
+    "keyTopics": [...],
+    "emotions": [...],
+    "sentiment": "...",
+    "output": "...",
+    "riskWords": "...",
+    "summary": "..."
+    }}
+    Transcript:
+    --- START ---
+    {text}
+    --- END ---
+    """
 
 def get_default_report():
     keys = ["feedback", "keyTopics", "emotions",
