@@ -74,10 +74,8 @@ jobs:
 
         # You might need to define the base URL for your API tests if they don't run the server
         # For CI, you typically test against a running instance OR mock heavily.
-        # If testing a live instance isn't part of this CI job, Robot needs to interact
         # with the code directly (less common for API testing) or you need service containers.
         # Assuming tests will hit localhost if the app were run (needs adjustment based on test strategy)
-        API_BASE_URL: http://127.0.0.1:8000 # Example, adjust in your Robot tests
 
     # --- Optional: Add Build/Deploy Steps Here ---
     # - name: Build Docker image (Example)

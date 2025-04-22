@@ -20,8 +20,9 @@ from datetime import date
 from enum import Enum
 from functools import lru_cache
 from typing import List, Dict, Any, Optional
-
-import torch
+from datetime import date, datetime          # ← already had `date`, add `datetime`
+from mutagen import File as MutagenFile     
+# import torch
 import uvicorn
 import google.generativeai as genai
 import oci
@@ -34,7 +35,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from transcription_module import AudioTranscriber
+# from transcription_module import AudioTranscriber
 from temp_storage import save_transcript, load_transcript   # optional utility
 
 # --------------------------------------------------------------------------- #
@@ -164,12 +165,6 @@ def transcribe_with_gemini(audio_path: str, model_name: str) -> List[Dict[str, A
 
 
 
-
-
-
-
-
-
 # --------------------------------------------------------------------------- #
 # OCI Language client (optional)
 language_client: Optional[AIServiceLanguageClient] = None
@@ -187,18 +182,18 @@ except Exception:
 
 # --------------------------------------------------------------------------- #
 # WhisperX transcriber (global – may remain unused if Gemini chosen)
-try:
-    whisper_device = "cuda" if torch.cuda.is_available() else "cpu"
-    whisper_compute = "float16" if whisper_device == "cuda" else "int8"
-    whisper_model_size = os.getenv("WHISPER_MODEL_SIZE", "base")
-    transcriber = AudioTranscriber(
-        model_name=whisper_model_size,
-        device=whisper_device,
-        compute_type=whisper_compute,
-    )
-except Exception:
-    logger.error("WhisperX init failed.", exc_info=True)
-    transcriber = None
+# try:
+#     whisper_device = "cuda" if torch.cuda.is_available() else "cpu"
+#     whisper_compute = "float16" if whisper_device == "cuda" else "int8"
+#     whisper_model_size = os.getenv("WHISPER_MODEL_SIZE", "base")
+#     transcriber = AudioTranscriber(
+#         model_name=whisper_model_size,
+#         device=whisper_device,
+#         compute_type=whisper_compute,
+#     )
+# except Exception:
+#     logger.error("WhisperX init failed.", exc_info=True)
+#     transcriber = None
 
 # --------------------------------------------------------------------------- #
 @app.get("/")
@@ -217,17 +212,19 @@ def create_llm_prompt(text: str) -> str:
     "sentiment": "...",
     "output": "...",
     "riskWords": "...",
-    "summary": "..."
+    "summary": "...",
+    "rating": "..."
     }}
     Transcript:
     --- START ---
     {text}
     --- END ---
+    Note: rating is on a scale of 0-100
     """
 
 def get_default_report():
     keys = ["feedback", "keyTopics", "emotions",
-            "sentiment", "output", "riskWords", "summary"]
+            "sentiment", "output", "riskWords", "summary", "rating"]
     return {k: f"Error generating {k}." for k in keys}
 
 def generate_report(text: str) -> Dict[str, Any]:
@@ -252,14 +249,52 @@ def generate_report(text: str) -> Dict[str, Any]:
         logger.error("Report generation failed", exc_info=True)
         return default
 
+def extract_audio_metadata(path: str) -> tuple[Optional[str], Optional[float]]:
+    """
+    Returns (recording_date_str, duration_seconds) where either item may be None.
+    • recording_date_str: original “date recorded” tag if present, else None
+      (format dd/mm/yyyy for convenience)
+    • duration_seconds : float with total length
+    """
+    try:
+        audio = MutagenFile(path)
+        if not audio:
+            return None, None
+
+        # -------- duration --------
+        duration = getattr(audio.info, "length", None)      # seconds (float)
+
+        # -------- date recorded --- (common tag names across formats)
+        tag_keys = ("TDRC", "©day", "date", "YEAR", "TYER", "TDAT")
+        rec_date = None
+        if audio.tags:
+            for k in tag_keys:
+                if k in audio.tags:
+                    raw = str(audio.tags[k])
+                    # strip non‑digits, then try ISO‑like reconstruction
+                    raw = raw.replace(":", "-").replace("/", "-")
+                    try:
+                        d = datetime.fromisoformat(raw[:10])
+                        rec_date = d.strftime("%d/%m/%Y")
+                    except Exception:
+                        rec_date = raw        # fallback: raw tag value
+                    break
+
+        return rec_date, duration
+    except Exception as e:
+        logger.warning(f"extract_audio_metadata failed: {e}")
+        return None, None
+
+
+
 # --------------------------------------------------------------------------- #
 # ----------------------------- /upload ------------------------------------- #
 @app.post("/upload")
 async def upload_audio(file: UploadFile = File(...)):
     if not file:
         raise HTTPException(status_code=400, detail="No file received.")
-    if transcriber is None and runtime_settings.transcription_engine == TranscriptionEngine.whisperx:
-        raise HTTPException(status_code=503, detail="WhisperX unavailable.")
+    # if transcriber is None and runtime_settings.transcription_engine == TranscriptionEngine.whisperx:
+    #     raise HTTPException(status_code=503, detail="WhisperX unavailable.")
 
     temp_dir = "temp_audio"
     os.makedirs(temp_dir, exist_ok=True)
@@ -274,12 +309,35 @@ async def upload_audio(file: UploadFile = File(...)):
         logger.error("File save failed", exc_info=True)
         raise HTTPException(status_code=500, detail=f"File save failed: {e}")
 
+    # ----------------- metadata (date recorded & duration) --------------------
+    rec_date, duration_sec = extract_audio_metadata(temp_path)
+
+
+    # • Fallback to file mtime if the audio file has no date tag
+    if not rec_date:
+        rec_date = datetime.fromtimestamp(
+            os.path.getmtime(temp_path)
+        ).strftime("%d/%m/%Y")
+
+    # • Friendly HH:MM:SS string (or "N/A")
+    def fmt_dur(s: Optional[float]) -> str:
+        if s is None:
+            return "N/A"
+        h, m = divmod(int(s), 3600)
+        m, s = divmod(m, 60)
+        return f"{h:02}:{m:02}:{s:02}"
+
+    duration_str = fmt_dur(duration_sec)
+
+
+
+
     # Transcription
     try:
         if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
             diarized = transcribe_with_gemini(temp_path, runtime_settings.llm_model)
-        else:
-            diarized = transcriber.transcribe_and_diarize(temp_path)
+        # else:
+        #     diarized = transcriber.transcribe_and_diarize(temp_path)
     except Exception as e:
         logger.error("Transcription failed", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
@@ -329,9 +387,9 @@ async def upload_audio(file: UploadFile = File(...)):
     return {
         "id": transcript_id,
         "name": file.filename,
-        "date": date.today().strftime("%d/%m/%Y"),
+        "date": rec_date,
         "type": "Sin categoría",
-        "duration": "N/A",
+        "duration": duration_str,
         "rating": 0,
         "report": report,
         "transcript": diarized,
@@ -407,8 +465,8 @@ def test_oci():
 if __name__ == "__main__":
     if not GEMINI_API_KEY:
         print("WARNING: GEMINI_API_KEY not set – LLM endpoints will fail.")
-    if transcriber is None:
-        print("WARNING: WhisperX unavailable – only Gemini transcription will work.")
+    # if transcriber is None:
+    #     print("WARNING: WhisperX unavailable – only Gemini transcription will work.")
     if not HF_TOKEN:
         print("WARNING: HF_TOKEN not set – diarization will fail with WhisperX.")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

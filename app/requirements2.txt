@@ -8,3 +8,4 @@ docstring_parser
 oci
 google-generativeai==0.8.5
 pytest
+MutagenFile
