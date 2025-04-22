@@ -32,7 +32,8 @@ def save_transcript(
     full_transcript_text: str, # String: "SPEAKER_00: Hello...\nSPEAKER_01: Hi..."
     report_data: dict,         # Dict containing LLM analysis results
     oci_emotion: str,
-    oci_aspects: list
+    oci_aspects: list,
+    **extra
 ):
     """
     Saves the given transcript data, including the structured diarized list
@@ -51,7 +52,7 @@ def save_transcript(
         TypeError: If data cannot be serialized to JSON.
     """
     # Construct the data payload to be saved
-    data_to_save = {
+    data_to_save: dict = {
         "id": transcript_id,
         "diarized_transcript": diarized_transcript, # Store the list with timestamps
         "full_transcript_text": full_transcript_text, # Store the full string

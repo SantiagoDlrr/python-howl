@@ -374,6 +374,9 @@ async def upload_audio(file: UploadFile = File(...)):
             report_data=report,
             oci_emotion=oci_emotion,
             oci_aspects=oci_aspects,
+            recordingDate=rec_date,          # ★ persists to JSON on disk
+            duration=duration_str,           #   (keep both names & types
+            durationSeconds=duration_sec, 
         )
     except Exception as e:
         logger.warning(f"save_transcript failed: {e}")
