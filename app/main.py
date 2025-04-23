@@ -249,42 +249,101 @@ def generate_report(text: str) -> Dict[str, Any]:
         logger.error("Report generation failed", exc_info=True)
         return default
 
-def extract_audio_metadata(path: str) -> tuple[Optional[str], Optional[float]]:
+import subprocess, shlex, wave, contextlib
+from mutagen import File as MutagenFile
+from mutagen.id3 import ID3
+from mutagen.mp4 import MP4
+from typing import Optional, Tuple
+from datetime import datetime
+import logging
+
+log = logging.getLogger(__name__)
+
+def extract_audio_metadata(path: str) -> Tuple[Optional[str], Optional[float]]:
     """
-    Returns (recording_date_str, duration_seconds) where either item may be None.
-    • recording_date_str: original “date recorded” tag if present, else None
-      (format dd/mm/yyyy for convenience)
-    • duration_seconds : float with total length
+    Returns (recording_date_dd/mm/yyyy | None, duration_seconds | None).
+    Falls back gracefully when tags or formats are missing.
     """
+    rec_date: Optional[str] = None
+    duration: Optional[float] = None
+
+    # ------------------------------------------------------------------ #
+    # 1) first attempt – mutagen (fast, no subprocess)
+    # ------------------------------------------------------------------ #
     try:
-        audio = MutagenFile(path)
-        if not audio:
-            return None, None
+        audio = MutagenFile(path, easy=False)
+        if audio:
+            # ---- duration -------------------------------------------------
+            duration = getattr(audio.info, "length", None)
 
-        # -------- duration --------
-        duration = getattr(audio.info, "length", None)      # seconds (float)
-
-        # -------- date recorded --- (common tag names across formats)
-        tag_keys = ("TDRC", "©day", "date", "YEAR", "TYER", "TDAT")
-        rec_date = None
-        if audio.tags:
-            for k in tag_keys:
-                if k in audio.tags:
-                    raw = str(audio.tags[k])
-                    # strip non‑digits, then try ISO‑like reconstruction
-                    raw = raw.replace(":", "-").replace("/", "-")
+            # ---- date recorded  ------------------------------------------
+            # MP3 / ID3
+            if isinstance(audio, ID3) or hasattr(audio, "tags"):
+                id3 = audio.tags or {}
+                if "TDRC" in id3:
                     try:
-                        d = datetime.fromisoformat(raw[:10])
-                        rec_date = d.strftime("%d/%m/%Y")
+                        d = id3["TDRC"].text[0]          # mutagen ID3 frame
+                        if hasattr(d, "year"):
+                            rec_date = datetime(d.year, d.month, d.day).strftime("%d/%m/%Y")
+                        else:                            # string fallback
+                            rec_date = str(d)[:10]
                     except Exception:
-                        rec_date = raw        # fallback: raw tag value
-                    break
+                        pass
+                # MP4 / M4A
+                if isinstance(audio, MP4) and "\xa9day" in audio.tags:
+                    rec_date = str(audio.tags["\xa9day"][0])[:10].replace("-", "/")
 
-        return rec_date, duration
+            if rec_date:
+                rec_date = normalise_date(rec_date)      # helper below
     except Exception as e:
-        logger.warning(f"extract_audio_metadata failed: {e}")
-        return None, None
+        log.debug(f"mutagen failed on {path}: {e}")
 
+    # ------------------------------------------------------------------ #
+    # 2) second attempt – raw WAV header (uncompressed PCM only)
+    # ------------------------------------------------------------------ #
+    if duration is None and path.lower().endswith(".wav"):
+        try:
+            with contextlib.closing(wave.open(path)) as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                if rate:
+                    duration = frames / float(rate)
+        except wave.Error as e:
+            log.debug(f"wave fallback failed on {path}: {e}")
+
+    # ------------------------------------------------------------------ #
+    # 3) final attempt – ffprobe (works on *anything* if ffmpeg installed)
+    # ------------------------------------------------------------------ #
+    if duration is None or rec_date is None:
+        try:
+            cmd = (
+                "ffprobe -v error -show_entries "
+                "format=duration:format_tags=creation_time "
+                "-of default=nw=1:nk=1 " + shlex.quote(path)
+            )
+            out = subprocess.check_output(cmd, shell=True, text=True).splitlines()
+            if len(out) >= 1 and duration is None:
+                duration = float(out[0])
+            if len(out) >= 2 and rec_date is None:
+                rec_date = normalise_date(out[1])
+        except (subprocess.CalledProcessError, ValueError) as e:
+            log.debug(f"ffprobe fallback failed on {path}: {e}")
+
+    return rec_date, duration
+
+
+# ------------------------------ helpers ------------------------------------ #
+def normalise_date(raw: str) -> Optional[str]:
+    """
+    Accepts an arbitrary date string (YYYY‑MM‑DD, YYYY:MM:DD, etc.)
+    and returns dd/mm/yyyy — or None if parse fails.
+    """
+    raw = raw.strip()[:10].replace(":", "-").replace("/", "-")
+    try:
+        d = datetime.fromisoformat(raw)
+        return d.strftime("%d/%m/%Y")
+    except ValueError:
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -374,9 +433,9 @@ async def upload_audio(file: UploadFile = File(...)):
             report_data=report,
             oci_emotion=oci_emotion,
             oci_aspects=oci_aspects,
-            recordingDate=rec_date,          # ★ persists to JSON on disk
+            date=rec_date,          # ★ persists to JSON on disk
             duration=duration_str,           #   (keep both names & types
-            durationSeconds=duration_sec, 
+             
         )
     except Exception as e:
         logger.warning(f"save_transcript failed: {e}")

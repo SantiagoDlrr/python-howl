@@ -33,6 +33,8 @@ def save_transcript(
     report_data: dict,         # Dict containing LLM analysis results
     oci_emotion: str,
     oci_aspects: list,
+    date: str,
+    duration: str,
     **extra
 ):
     """
@@ -60,7 +62,7 @@ def save_transcript(
         "oci_emotion": oci_emotion,      # Store OCI overall sentiment
         "oci_aspects": oci_aspects       # Store OCI aspect sentiment
     }
-
+    data_to_save.update(extra)
     # Define the full path for the transcript file
     file_path = os.path.join(STORAGE_DIR, f"transcript_{transcript_id}.json")
     logger.info(f"Attempting to save transcript data to: {file_path}")
