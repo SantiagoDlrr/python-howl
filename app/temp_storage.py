@@ -32,7 +32,10 @@ def save_transcript(
     full_transcript_text: str, # String: "SPEAKER_00: Hello...\nSPEAKER_01: Hi..."
     report_data: dict,         # Dict containing LLM analysis results
     oci_emotion: str,
-    oci_aspects: list
+    oci_aspects: list,
+    date: str,
+    duration: str,
+    **extra
 ):
     """
     Saves the given transcript data, including the structured diarized list
@@ -51,7 +54,7 @@ def save_transcript(
         TypeError: If data cannot be serialized to JSON.
     """
     # Construct the data payload to be saved
-    data_to_save = {
+    data_to_save: dict = {
         "id": transcript_id,
         "diarized_transcript": diarized_transcript, # Store the list with timestamps
         "full_transcript_text": full_transcript_text, # Store the full string
@@ -59,7 +62,7 @@ def save_transcript(
         "oci_emotion": oci_emotion,      # Store OCI overall sentiment
         "oci_aspects": oci_aspects       # Store OCI aspect sentiment
     }
-
+    data_to_save.update(extra)
     # Define the full path for the transcript file
     file_path = os.path.join(STORAGE_DIR, f"transcript_{transcript_id}.json")
     logger.info(f"Attempting to save transcript data to: {file_path}")

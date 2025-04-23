@@ -1,7 +1,7 @@
 
 services:
   fastapi-backend:
-    image: a00835462/howl_ai:v0.1
+    image: a00835462/howl_ai:v0.6
     build:
       context: ./app
 
