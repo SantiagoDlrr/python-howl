@@ -19,8 +19,8 @@ COPY requirements2.txt .
 # RUN pip install  -r requirements.txt
 RUN pip install --no-cache-dir -r requirements2.txt
 
-# COPY requirements3.txt .
-# RUN pip install --no-cache-dir -r requirements3.txt
+COPY requirements3.txt .
+RUN pip install --no-cache-dir -r requirements3.txt
 
 
 
