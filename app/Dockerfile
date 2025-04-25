@@ -27,8 +27,12 @@ RUN pip install --no-cache-dir -r requirements2.txt
 # Copy app files into the container
 COPY . .
 
-# Expose port (FastAPI default)
-EXPOSE 8000
+# Copy SSL certificates (adjust path if needed)
+COPY cert.pem /app/cert.pem
+COPY key.pem /app/key.pem
 
-# Run the FastAPI app
-CMD ["uvicorn", "main:app","--reload", "--host", "0.0.0.0", "--port", "8000"]
+# Expose HTTPS port
+EXPOSE 443
+
+# Run FastAPI with SSL
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "key.pem", "--ssl-certfile", "cert.pem"]
