@@ -37,6 +37,9 @@ env/
 .venv/
 *.egg-info/
 
+
+app/cert.pem
+app/key.pem
 # Model caches (optional, but can be large)
 # You might need these if you cache models locally outside the project dir
 # Adjust paths based on your system if needed
