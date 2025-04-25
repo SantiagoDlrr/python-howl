@@ -38,7 +38,7 @@ env/
 *.egg-info/
 
 
-cer.pem
+cert.pem
 key.pem
 # Model caches (optional, but can be large)
 # You might need these if you cache models locally outside the project dir
