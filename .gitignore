@@ -40,6 +40,7 @@ env/
 
 app/cert.pem
 app/key.pem
+app/.coverage
 # Model caches (optional, but can be large)
 # You might need these if you cache models locally outside the project dir
 # Adjust paths based on your system if needed

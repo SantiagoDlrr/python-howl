@@ -61,7 +61,7 @@ class TestEndpoints:
     @patch("builtins.open", new_callable=mock_open)
     def test_upload_audio_gemini(self, mock_file_open, mock_extract_metadata, 
                                 mock_save_transcript, mock_generate_report, 
-                                mock_transcribe):
+                                mock_transcribe, mock_getmtime):
         """Test uploading audio with Gemini transcription."""
         # Mock the dependencies
         mock_extract_metadata.return_value = ("01/01/2023", 120.5)
@@ -104,8 +104,8 @@ class TestEndpoints:
         assert "transcript" in response.json()
         assert "report" in response.json()
 
-    @patch("app.main.load_transcript")
-    @patch("app.main.get_gemini_model")
+    @patch("main.load_transcript")
+    @patch("main.get_gemini_model")
     def test_chat_endpoint(self, mock_get_model, mock_load_transcript):
         """Test the chat endpoint."""
         mock_load_transcript.return_value = {
@@ -156,7 +156,7 @@ class TestHelperFunctions:
         assert normalise_date("invalid-date") is None
 
     @patch("os.path.getmtime")
-    @patch("mutagen.File")
+    @patch("main.MutagenFile")  # instead of mutagen.File
     @patch("os.path.exists")
     def test_extract_audio_metadata(self, mock_exists, mock_mutagen_file, mock_getmtime):
         mock_exists.return_value = True
@@ -188,11 +188,22 @@ class TestHelperFunctions:
         assert "keyTopics" in prompt
         assert "rating" in prompt
 
-    @patch("app.main.get_gemini_model")
+    @patch("main.get_gemini_model")
     def test_generate_report(self, mock_get_model):
         mock_model = MagicMock()
         mock_response = MagicMock()
-        mock_response.text = {
+        # mock_response.text = {
+        #     "feedback": "Good call",
+        #     "keyTopics": ["greeting"],
+        #     "emotions": ["neutral"],
+        #     "sentiment": "positive",
+        #     "output": "success",
+        #     "riskWords": "none",
+        #     "summary": "A friendly greeting",
+        #     "rating": "80"
+        # }
+
+        mock_response.text = json.dumps({
             "feedback": "Good call",
             "keyTopics": ["greeting"],
             "emotions": ["neutral"],
@@ -201,7 +212,8 @@ class TestHelperFunctions:
             "riskWords": "none",
             "summary": "A friendly greeting",
             "rating": "80"
-        }
+        })
+
         mock_model.generate_content.return_value = mock_response
         mock_get_model.return_value = mock_model
 
@@ -217,6 +229,9 @@ class TestGeminiIntegration:
     @patch("google.generativeai.GenerativeModel")
     def test_get_gemini_model(self, mock_gen_model, mock_configure, mock_environ):
         """Test the get_gemini_model function."""
+        from main import get_gemini_model
+        get_gemini_model.cache_clear()
+
         # Set up the environment
         mock_environ.get.return_value = "fake-api-key"
         
