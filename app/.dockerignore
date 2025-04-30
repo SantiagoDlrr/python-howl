@@ -1,6 +1,7 @@
 temp_data/
 temp_audio/
 transcript_storage/
+htmlcov/
 __pycache__/
 __pycache__
 *.pyc

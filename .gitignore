@@ -37,6 +37,8 @@ env/
 .venv/
 *.egg-info/
 
+htmlcov/
+
 
 app/cert.pem
 app/key.pem
