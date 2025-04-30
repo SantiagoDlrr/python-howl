@@ -7,12 +7,14 @@ services:
 
     container_name: fastapi-app
     ports:
-      - "443:443"
+      # - "443:443"
+      - "8000:8000"
     volumes:
       - ./app:/app
       - ./.oci:/root/.oci 
       - ./tests:/app/tests 
-
+    environment:
+      - PYTHONPATH=/app:/app/tests
     env_file:
       - .env
 

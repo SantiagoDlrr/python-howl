@@ -6,11 +6,10 @@ import sys
 import pytest
 from unittest.mock import patch, MagicMock
 
-# Add the project root to the Python path so we can import modules correctly
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the app directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../app')))
 
-# Create a fixture to mock environment variables
-@pytest.fixture(autouse=True)  # autouse=True makes this run for all tests
+@pytest.fixture(autouse=True)
 def mock_env_vars():
     """Mock environment variables needed for tests."""
     with patch.dict(os.environ, {
