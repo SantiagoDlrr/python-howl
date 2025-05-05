@@ -28,12 +28,11 @@ RUN pip install --no-cache-dir -r requirements3.txt
 COPY . .
 
 # Copy SSL certificates (adjust path if needed)
-# COPY cert.pem /app/cert.pem
-# COPY key.pem /app/key.pem
+COPY cert.pem /app/cert.pem
+COPY key.pem /app/key.pem
 
 # Expose HTTPS port
-# EXPOSE 443
-EXPOSE 8000 
+EXPOSE 443
+# EXPOSE 8000 
 # Run FastAPI with SSL
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-#, "--ssl-keyfile", "key.pem", "--ssl-certfile", "cert.pem"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "key.pem", "--ssl-certfile", "cert.pem"]
