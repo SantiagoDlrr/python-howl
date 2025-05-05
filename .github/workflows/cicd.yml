@@ -47,12 +47,12 @@ jobs:
       env:
         OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
 
-    - name: Run tests
+    - name: Run tests with coverage
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
       run: |
-        pytest tests/ --cov=app --cov-report=xml
+        docker-compose run fastapi-backend pytest tests/ --cov=main --cov=temp_storage --cov-report=term --cov-report=xml
 
     - name: Build and tag Docker image
       run: |
@@ -89,7 +89,5 @@ jobs:
     steps:
     - name: Deploy to production
       run: |
-        echo "Add your deployment steps here"
-        # Example: SSH into server and pull/restart containers
-        # - Use secrets.DEPLOY_SSH_KEY for authentication
-        # - Use docker-compose pull && docker-compose up -d
+        # docker oci login, tag images, then push the images to cloud
+

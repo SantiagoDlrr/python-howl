@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock, mock_open
 from fastapi.testclient import TestClient
 from fastapi import UploadFile
 
-# Import directly from main since we're mounting the app directory
+
 from main import (
     app,
     RuntimeSettings,
@@ -22,7 +22,7 @@ from main import (
     create_llm_prompt
 )
 
-# Create a test client
+
 client = TestClient(app)
 
 
@@ -59,11 +59,13 @@ class TestEndpoints:
     @patch("main.save_transcript")
     @patch("main.extract_audio_metadata")
     @patch("builtins.open", new_callable=mock_open)
-    def test_upload_audio_gemini(self, mock_file_open, mock_extract_metadata, 
-                                mock_save_transcript, mock_generate_report, 
-                                mock_transcribe, mock_getmtime):
+    # change to the following to fix this error
+    def test_upload_audio_gemini(self, mock_file_open, mock_extract_metadata, mock_save_transcript, mock_generate_report, mock_transcribe, mock_getmtime):
+    # def test_upload_audio_gemini(self, mock_file_open, mock_extract_metadata, 
+    #                             mock_save_transcript, mock_generate_report, 
+    #                             mock_transcribe):
         """Test uploading audio with Gemini transcription."""
-        # Mock the dependencies
+
         mock_extract_metadata.return_value = ("01/01/2023", 120.5)
         mock_transcribe.return_value = [
             {"speaker": "SPEAKER_00", "text": "Hello", "start": 0.0, "end": 1.0},
@@ -80,13 +82,13 @@ class TestEndpoints:
             "rating": "80"
         }
         
-        # Create a test file
+
         test_file = UploadFile(
             file=mock_open(read_data=b"test audio data")(),
             filename="test_audio.mp3"
         )
         
-        # Make the request
+
         with patch("app.main.runtime_settings", 
                   RuntimeSettings(transcription_engine=TranscriptionEngine.gemini)):
             with patch("app.main.UploadFile.read", return_value=b"test audio data"):
@@ -187,8 +189,8 @@ class TestHelperFunctions:
         assert "feedback" in prompt
         assert "keyTopics" in prompt
         assert "rating" in prompt
-
-    @patch("main.get_gemini_model")
+    @patch("main.get_gemini_model") 
+    # @patch("app.main.get_gemini_model")
     def test_generate_report(self, mock_get_model):
         mock_model = MagicMock()
         mock_response = MagicMock()
@@ -202,7 +204,7 @@ class TestHelperFunctions:
         #     "summary": "A friendly greeting",
         #     "rating": "80"
         # }
-
+        # to fix this error
         mock_response.text = json.dumps({
             "feedback": "Good call",
             "keyTopics": ["greeting"],
@@ -247,7 +249,7 @@ class TestGeminiIntegration:
     @patch("google.generativeai.GenerativeModel")
     def test_transcribe_with_gemini(self, mock_gen_model, mock_file_open, mock_splitext):
         """Test the transcribe_with_gemini function."""
-        # Set up the mocks
+
         mock_splitext.return_value = ("test", ".mp3")
         mock_model = MagicMock()
         mock_response = MagicMock()
@@ -262,17 +264,16 @@ class TestGeminiIntegration:
         mock_model.generate_content.return_value = mock_response
         mock_gen_model.return_value = mock_model
         
-        # Call the function
+
         result = transcribe_with_gemini("test.mp3", "gemini-1.5-flash")
         
-        # Check the results
+
         assert len(result) == 2
         assert result[0]["speaker"] == "SPEAKER_00"
         assert result[0]["text"] == "Hello"
         assert result[1]["speaker"] == "SPEAKER_01"
         assert result[1]["text"] == "Hi there"
         
-        # Test error handling
         mock_response.text = "invalid json"
         result = transcribe_with_gemini("test.mp3", "gemini-1.5-flash")
         assert result[0]["speaker"] == "SYSTEM"

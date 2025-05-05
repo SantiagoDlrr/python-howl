@@ -8,4 +8,4 @@ docker-compose run fastapi-backend pytest tests/ --cov=main --cov=temp_storage -
 docker-compose run fastapi-backend pytest tests/test_main.py
 
 # Run with html coverage for a gui
-docker-compose run fastapi-backend pytest tests/ --cov=mainbut e --cov-report=html
+docker-compose run fastapi-backend pytest tests/ --cov=main --cov-report=html
