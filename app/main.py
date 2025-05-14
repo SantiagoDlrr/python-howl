@@ -56,7 +56,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # Allow all origins
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
