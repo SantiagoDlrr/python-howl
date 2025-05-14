@@ -21,7 +21,7 @@ from enum import Enum
 from functools import lru_cache
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime          # ← already had `date`, add `datetime`
-from mutagen import File as MutagenFile     
+from mutagen import File as MutagenFile
 # import torch
 import uvicorn
 import google.generativeai as genai
@@ -33,10 +33,14 @@ from oci.ai_language.models import (
 )
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+import os
 
 # from transcription_module import AudioTranscriber
 from temp_storage import save_transcript, load_transcript   # optional utility
+from rag_chat import rag_chat as rag_chat_function  # Import the RAG chat function
 
 # --------------------------------------------------------------------------- #
 # Logging
@@ -61,6 +65,9 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --------------------------------------------------------------------------- #
 # Runtime settings – default **Gemini**
@@ -96,12 +103,12 @@ def get_gemini_model(model_name: str):
 
 
 # ---------------------------------------------------------------------------
-# Gemini audio helper  
+# Gemini audio helper
 
 import os, json, logging
 from typing import List, Dict, Any
 import google.generativeai as genai
-from google.generativeai import GenerationConfig    
+from google.generativeai import GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +206,11 @@ except Exception:
 @app.get("/")
 def root():
     return {"message": "Audio Analysis API ready."}
+
+@app.get("/rag")
+def rag_chat_ui():
+    """Serve the RAG chat UI HTML page"""
+    return FileResponse("static/rag_chat.html")
 
 # --------------------------------------------------------------------------- #
 # Helpers for LLM report
@@ -436,7 +448,7 @@ async def upload_audio(file: UploadFile = File(...)):
             oci_aspects=oci_aspects,
             date=rec_date,          # ★ persists to JSON on disk
             duration=duration_str,           #   (keep both names & types
-             
+
         )
     except Exception as e:
         logger.warning(f"save_transcript failed: {e}")
@@ -513,6 +525,44 @@ def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=503, detail="LLM service error.")
 
 # --------------------------------------------------------------------------- #
+# ------------------------------ /rag_chat ---------------------------------- #
+class RAGChatRequest(BaseModel):
+    question: str
+    call_ids: List[str]
+
+@app.post("/rag_chat")
+def rag_chat_endpoint(req: RAGChatRequest):
+    """
+    RAG-based chat endpoint that uses semantic search over transcript chunks
+    to answer questions with source attribution.
+
+    Args:
+        req: Request containing the question and list of call IDs to search
+
+    Returns:
+        Dictionary with answer and source attributions
+    """
+    if not req.question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    if not req.call_ids:
+        raise HTTPException(status_code=400, detail="At least one call ID must be provided.")
+
+    try:
+        # Call the RAG chat function from our imported module
+        response = rag_chat_function(
+            question=req.question,
+            call_ids=req.call_ids,
+            model_name=runtime_settings.llm_model,
+            api_key=GEMINI_API_KEY
+        )
+
+        return response
+    except Exception as e:
+        logger.error(f"RAG chat failed: {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="RAG chat service error.")
+
+# --------------------------------------------------------------------------- #
 # Dev utilities
 @app.get("/test_oci")
 def test_oci():
@@ -523,6 +573,19 @@ def test_oci():
     req = BatchDetectLanguageSentimentsDetails(documents=docs)
     resp = language_client.batch_detect_language_sentiments(req)
     return {"data": str(resp.data)}
+
+
+
+
+# from fastapi import FastAPI
+from db import query
+
+
+@app.get("/testdb")
+async def get_users():
+    sql = "SELECT * "
+    return await query(sql)
+
 
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":

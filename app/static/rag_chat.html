@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chat Test Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .input-panel {
+            flex: 1;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .output-panel {
+            flex: 1;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            max-height: 80vh;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .call-id-container {
+            margin-bottom: 20px;
+        }
+        .call-id-list {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .call-id-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .call-id-item input {
+            margin-right: 10px;
+            width: auto;
+            margin-bottom: 0;
+        }
+        .answer-container {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #f0f7ff;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+        }
+        .sources-container {
+            margin-top: 20px;
+        }
+        .source-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            border-left: 5px solid #2ecc71;
+        }
+        .source-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .source-text {
+            white-space: pre-wrap;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        .error {
+            color: #e74c3c;
+            padding: 15px;
+            background-color: #ffeaea;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .sample-questions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+        }
+        .sample-question-btn {
+            background-color: #f1c40f;
+            color: #34495e;
+            margin: 5px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .sample-question-btn:hover {
+            background-color: #f39c12;
+        }
+    </style>
+</head>
+<body>
+    <h1>RAG Chat Test Interface</h1>
+    
+    <div class="container">
+        <div class="input-panel">
+            <h2>Input</h2>
+            
+            <label for="question">Question:</label>
+            <textarea id="question" placeholder="Enter your question here..."></textarea>
+            
+            <div class="call-id-container">
+                <label>Select Call IDs:</label>
+                <div class="call-id-list">
+                    <div class="call-id-item">
+                        <input type="checkbox" id="call-123" value="call-123" checked>
+                        <label for="call-123">call-123 (Order delivery issue)</label>
+                    </div>
+                    <div class="call-id-item">
+                        <input type="checkbox" id="call-456" value="call-456" checked>
+                        <label for="call-456">call-456 (Printer WiFi setup)</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sample-questions">
+                <h3>Sample Questions:</h3>
+                <button class="sample-question-btn" onclick="useQuestion('What was the customer\'s issue with their order?')">Order Issue</button>
+                <button class="sample-question-btn" onclick="useQuestion('How did the agent help with the printer setup?')">Printer Setup</button>
+                <button class="sample-question-btn" onclick="useQuestion('What was the order number mentioned in the call?')">Order Number</button>
+                <button class="sample-question-btn" onclick="useQuestion('What should the customer do if they don\'t receive their order?')">Follow-up Action</button>
+            </div>
+            
+            <button id="submit-btn" onclick="submitQuestion()">Submit Question</button>
+        </div>
+        
+        <div class="output-panel">
+            <h2>Response</h2>
+            <div id="response-container">
+                <p>Submit a question to see the response here.</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Function to submit the question to the API
+        async function submitQuestion() {
+            const question = document.getElementById('question').value.trim();
+            if (!question) {
+                showError("Please enter a question.");
+                return;
+            }
+            
+            // Get selected call IDs
+            const callIds = [];
+            document.querySelectorAll('.call-id-item input:checked').forEach(checkbox => {
+                callIds.push(checkbox.value);
+            });
+            
+            if (callIds.length === 0) {
+                showError("Please select at least one call ID.");
+                return;
+            }
+            
+            // Show loading message
+            document.getElementById('response-container').innerHTML = '<div class="loading">Processing your question...</div>';
+            
+            // Prepare request data
+            const requestData = {
+                question: question,
+                call_ids: callIds
+            };
+            
+            try {
+                // Send request to the API
+                const response = await fetch('/rag_chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayResponse(data);
+                
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+            }
+        }
+        
+        // Function to display the response
+        function displayResponse(data) {
+            const container = document.getElementById('response-container');
+            
+            let html = '';
+            
+            // Display the answer
+            html += `<div class="answer-container">
+                <h3>Answer:</h3>
+                <p>${formatText(data.answer)}</p>
+            </div>`;
+            
+            // Display the sources
+            if (data.sources && data.sources.length > 0) {
+                html += `<div class="sources-container">
+                    <h3>Sources:</h3>`;
+                
+                data.sources.forEach((source, index) => {
+                    html += `<div class="source-item">
+                        <div class="source-header">
+                            <span>Source ${index + 1}: Call ${source.call_id}</span>
+                            <span>Relevance: ${(source.score * 100).toFixed(2)}%</span>
+                        </div>
+                        <div class="source-text">${formatText(source.text)}</div>
+                    </div>`;
+                });
+                
+                html += '</div>';
+            } else {
+                html += '<p>No sources provided.</p>';
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Function to show error message
+        function showError(message) {
+            document.getElementById('response-container').innerHTML = `
+                <div class="error">${message}</div>
+                <p>Please try again with a different question or call IDs.</p>
+            `;
+        }
+        
+        // Function to format text with line breaks
+        function formatText(text) {
+            return text.replace(/\n/g, '<br>');
+        }
+        
+        // Function to use a sample question
+        function useQuestion(question) {
+            document.getElementById('question').value = question;
+        }
+    </script>
+</body>
+</html>
