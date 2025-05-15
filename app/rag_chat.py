@@ -103,27 +103,32 @@ async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
     
     results = {}
     
-    # For now, hardcode to use call_id 122 regardless of input
     try:
         from db import query
         
-        # Use the PostgreSQL function to get transcript
-        sql = "SELECT get_transcript_by_call_id(122) as transcript;"
-        query_result = await query(sql)
-        
-        if query_result and len(query_result) > 0:
-            transcript_text = query_result[0].get('transcript')
+        for call_id in call_ids:
+            # Extract numeric ID from call-id format if needed
+            numeric_id = call_id
+            if call_id.startswith("call-"):
+                numeric_id = call_id.split("-")[1]
             
-            if transcript_text:
-                # Create a transcript object with the retrieved text
-                results["call-122"] = {
-                    "id": "call-122",
-                    "date": "Current Date",
-                    "duration": "Unknown",
-                    "transcript": [
-                        {"speaker": "TRANSCRIPT", "text": transcript_text, "start": 0.0, "end": 0.0}
-                    ]
-                }
+            # Use the PostgreSQL function to get transcript
+            sql = f"SELECT get_transcript_by_call_id({numeric_id}) as transcript;"
+            query_result = await query(sql)
+            
+            if query_result and len(query_result) > 0:
+                transcript_text = query_result[0].get('transcript')
+                
+                if transcript_text:
+                    # Create a transcript object with the retrieved text
+                    results[call_id] = {
+                        "id": call_id,
+                        "date": "Current Date",
+                        "duration": "Unknown",
+                        "transcript": [
+                            {"speaker": "TRANSCRIPT", "text": transcript_text, "start": 0.0, "end": 0.0}
+                        ]
+                    }
     except Exception as e:
         logger.error(f"Database query failed: {e}")
     
