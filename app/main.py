@@ -531,7 +531,7 @@ class RAGChatRequest(BaseModel):
     call_ids: List[str]
 
 @app.post("/rag_chat")
-def rag_chat_endpoint(req: RAGChatRequest):
+async def rag_chat_endpoint(req: RAGChatRequest):
     """
     RAG-based chat endpoint that uses semantic search over transcript chunks
     to answer questions with source attribution.
@@ -549,10 +549,10 @@ def rag_chat_endpoint(req: RAGChatRequest):
         raise HTTPException(status_code=400, detail="At least one call ID must be provided.")
 
     try:
-        # Call the RAG chat function from our imported module
-        response = rag_chat_function(
+        # Call the RAG chat function from our imported module (now async)
+        response = await rag_chat_function(
             question=req.question,
-            call_ids=req.call_ids,
+            call_ids=req.call_ids,  # We'll ignore this and use hardcoded 122 for now
             model_name=runtime_settings.llm_model,
             api_key=GEMINI_API_KEY
         )

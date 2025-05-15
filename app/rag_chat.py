@@ -89,10 +89,9 @@ SAMPLE_TRANSCRIPTS = {
     }
 }
 
-def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
+async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
     """
-    Fake function to retrieve transcripts from database.
-    In a real implementation, this would query a PostgreSQL database.
+    Retrieve transcripts from PostgreSQL database using call IDs.
     
     Args:
         call_ids: List of call IDs to retrieve
@@ -103,9 +102,30 @@ def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
     logger.info(f"Retrieving transcripts for call IDs: {call_ids}")
     
     results = {}
-    for call_id in call_ids:
-        if call_id in SAMPLE_TRANSCRIPTS:
-            results[call_id] = SAMPLE_TRANSCRIPTS[call_id]
+    
+    # For now, hardcode to use call_id 122 regardless of input
+    try:
+        from db import query
+        
+        # Use the PostgreSQL function to get transcript
+        sql = "SELECT get_transcript_by_call_id(122) as transcript;"
+        query_result = await query(sql)
+        
+        if query_result and len(query_result) > 0:
+            transcript_text = query_result[0].get('transcript')
+            
+            if transcript_text:
+                # Create a transcript object with the retrieved text
+                results["call-122"] = {
+                    "id": "call-122",
+                    "date": "Current Date",
+                    "duration": "Unknown",
+                    "transcript": [
+                        {"speaker": "TRANSCRIPT", "text": transcript_text, "start": 0.0, "end": 0.0}
+                    ]
+                }
+    except Exception as e:
+        logger.error(f"Database query failed: {e}")
     
     return results
 
@@ -307,7 +327,7 @@ def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
 # Main RAG Chat Function
 # --------------------------------------------------------------------------- #
 
-def rag_chat(question: str, call_ids: List[str], model_name: str, api_key: str) -> Dict[str, Any]:
+async def rag_chat(question: str, call_ids: List[str], model_name: str, api_key: str) -> Dict[str, Any]:
     """
     Main function to handle RAG-based chat.
     
@@ -321,8 +341,8 @@ def rag_chat(question: str, call_ids: List[str], model_name: str, api_key: str) 
         Dictionary containing the answer and source attributions
     """
     try:
-        # 1. Retrieve transcripts from database
-        transcripts = get_transcripts_from_db(call_ids)
+        # 1. Retrieve transcripts from database (now async)
+        transcripts = await get_transcripts_from_db(call_ids)
         
         if not transcripts:
             return {
@@ -343,10 +363,9 @@ def rag_chat(question: str, call_ids: List[str], model_name: str, api_key: str) 
         response = generate_rag_response(question, relevant_chunks, model_name, api_key)
         
         return response
-    
     except Exception as e:
-        logger.error(f"Error in RAG chat pipeline: {e}")
+        logger.error(f"RAG chat error: {e}")
         return {
-            "answer": "Sorry, I encountered an error while processing your question.",
+            "answer": f"An error occurred while processing your question: {str(e)}",
             "sources": []
         }
