@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chat Test Interface</title>
+    <style>
+        :root {
+            --primary: #f6735c;
+            --primary-light: #ede9fe;
+            --primary-dark: #ed3a3a;
+            --success: #8b5cf6;
+            --background: #f9fafb;
+            --card-bg: #ffffff;
+            --border: #e5e7eb;
+            --text: #374151;
+            --text-light: #6b7280;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background-color: var(--background);
+            min-height: 100vh;
+        }
+        
+        h1, h2, h3 {
+            color: var(--text);
+            font-weight: 600;
+        }
+        
+        h1 {
+            font-size: 1.75rem;
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+        
+        h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        
+        h3 {
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .wrapper {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
+        .container {
+            display: flex;
+            gap: 1.5rem;
+            height: calc(100vh - 100px);
+            min-height: 600px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: auto;
+            }
+        }
+        
+        .panel {
+            flex: 1;
+            background-color: var(--card-bg);
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .panel-body {
+            padding: 1.5rem;
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text);
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            background-color: var(--card-bg);
+            color: var(--text);
+            font-family: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+        }
+        
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1rem;
+            font-weight: 500;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            font-size: 0.875rem;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .btn-secondary {
+            background-color: white;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--background);
+        }
+        
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .call-id-input {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .call-id-input input {
+            flex: 1;
+        }
+        
+        .call-id-list {
+            margin-top: 0.75rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .call-id-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.5rem;
+            background-color: var(--primary-light);
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+        }
+        
+        .sample-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .sample-call-ids {
+            margin-bottom: 1.5rem;
+        }
+        
+        .sample-questions {
+            margin-bottom: 1.5rem;
+        }
+        
+        .btn-sample {
+            background-color: var(--primary-light);
+            color: var(--primary);
+        }
+        
+        .btn-sample:hover {
+            background-color: #ddd6fe;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 1rem;
+        }
+        
+        .answer-container {
+            padding: 1.25rem;
+            background-color: var(--primary-light);
+            border-radius: 0.5rem;
+            border-left: 4px solid var(--primary);
+            margin-bottom: 1.5rem;
+        }
+        
+        .sources-container {
+            margin-top: 1.5rem;
+        }
+        
+        .source-item {
+            padding: 1.25rem;
+            background-color: var(--background);
+            border-radius: 0.5rem;
+            border-left: 4px solid var(--success);
+            margin-bottom: 1rem;
+        }
+        
+        .source-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .source-text {
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: var(--text-light);
+        }
+        
+        .loading-spinner {
+            width: 1.5rem;
+            height: 1.5rem;
+            border: 3px solid var(--primary-light);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 0.75rem;
+        }
+        
+        .error {
+            padding: 1rem;
+            background-color: #fef2f2;
+            border-left: 4px solid #ef4444;
+            color: #b91c1c;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            color: var(--text-light);
+            padding: 2rem;
+        }
+        
+        .icon-circle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 3rem;
+            height: 3rem;
+            background-color: var(--primary-light);
+            border-radius: 50%;
+            margin-bottom: 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <h1>RAG Chat Test Interface</h1>
+        
+        <div class="container">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Input</h2>
+                </div>
+                <div class="panel-body">
+                    <div class="input-group">
+                        <label for="question">Question:</label>
+                        <textarea id="question" placeholder="Enter your question here..."></textarea>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>Call IDs:</label>
+                        <div class="call-id-input">
+                            <input type="text" id="call-id-input" placeholder="Enter call ID (e.g., 122, 123)">
+                            <button class="btn-primary" onclick="addCallId()">Add</button>
+                        </div>
+                        <div class="call-id-list" id="call-id-list">
+                            <!-- Call IDs will be added here dynamically -->
+                        </div>
+                    </div>
+                    
+                    <div class="sample-call-ids">
+                        <h3>Sample Call IDs:</h3>
+                        <div class="sample-buttons">
+                            <button class="btn-sample" onclick="addSampleCallId('122')">Call 122</button>
+                            <button class="btn-sample" onclick="addSampleCallId('123')">Call 123</button>
+                            <button class="btn-sample" onclick="addSampleCallId('124')">Call 124</button>
+                        </div>
+                    </div>
+                    
+                    <div class="sample-questions">
+                        <h3>Sample Questions:</h3>
+                        <div class="sample-buttons">
+                            <button class="btn-sample" onclick="useQuestion('What was the customer\'s issue with their order?')">Order Issue</button>
+                            <button class="btn-sample" onclick="useQuestion('How did the agent help with the printer setup?')">Printer Setup</button>
+                            <button class="btn-sample" onclick="useQuestion('What was the order number mentioned in the call?')">Order Number</button>
+                            <button class="btn-sample" onclick="useQuestion('What should the customer do if they don\'t receive their order?')">Follow-up Action</button>
+                        </div>
+                    </div>
+                    
+                    <button id="submit-btn" class="btn-primary submit-btn" onclick="submitQuestion()">Submit Question</button>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>Response</h2>
+                </div>
+                <div class="panel-body">
+                    <div id="response-container">
+                        <div class="empty-state">
+                            <div class="icon-circle">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-500">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                            </div>
+                            <p>Submit a question to see the response here.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Array to store the call IDs
+        let callIds = [];
+        
+        // Function to add a call ID
+        function addCallId() {
+            const input = document.getElementById('call-id-input');
+            const callId = input.value.trim();
+            
+            if (callId) {
+                // Add the call ID if it's not already in the list
+                if (!callIds.includes(callId)) {
+                    callIds.push(callId);
+                    updateCallIdList();
+                }
+                
+                // Clear the input
+                input.value = '';
+            }
+        }
+        
+        // Function to remove a call ID
+        function removeCallId(callId) {
+            callIds = callIds.filter(id => id !== callId);
+            updateCallIdList();
+        }
+        
+        // Function to update the call ID list display
+        function updateCallIdList() {
+            const list = document.getElementById('call-id-list');
+            list.innerHTML = '';
+            
+            callIds.forEach(callId => {
+                const item = document.createElement('div');
+                item.className = 'call-id-item';
+                item.innerHTML = `
+                    <span>Call ${callId}</span>
+                    <button class="btn-sm" onclick="removeCallId('${callId}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+        }
+        
+        // Function to submit the question to the API
+        async function submitQuestion() {
+            const question = document.getElementById('question').value.trim();
+            if (!question) {
+                showError("Please enter a question.");
+                return;
+            }
+            
+            if (callIds.length === 0) {
+                showError("Please add at least one call ID.");
+                return;
+            }
+            
+            // Show loading message
+            document.getElementById('response-container').innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <span>Processing your question...</span>
+                </div>
+            `;
+            
+            // Prepare request data
+            const requestData = {
+                question: question,
+                call_ids: callIds
+            };
+            
+            try {
+                // Send request to the API
+                const response = await fetch('http://localhost:8000/rag_chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                displayResponse(data);
+                
+            } catch (error) {
+                showError(`Error: ${error.message}`);
+            }
+        }
+        
+        // Function to display the response
+        function displayResponse(data) {
+            const container = document.getElementById('response-container');
+            
+            let html = '';
+            
+            // Display the answer
+            html += `<div class="answer-container">
+                <h3>Answer:</h3>
+                <p>${formatText(data.answer)}</p>
+            </div>`;
+            
+            // Display the sources
+            if (data.sources && data.sources.length > 0) {
+                html += `<div class="sources-container">
+                    <h3>Sources:</h3>`;
+                
+                data.sources.forEach((source, index) => {
+                    html += `<div class="source-item">
+                        <div class="source-header">
+                            <span>Source ${index + 1}: Call ${source.call_id}</span>
+                            <span>Relevance: ${(source.score * 100).toFixed(2)}%</span>
+                        </div>
+                        <div class="source-text">${formatText(source.text)}</div>
+                    </div>`;
+                });
+                
+                html += '</div>';
+            } else {
+                html += '<p>No sources provided.</p>';
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Function to show error message
+        function showError(message) {
+            document.getElementById('response-container').innerHTML = `
+                <div class="error">${message}</div>
+                <p>Please try again with a different question or call IDs.</p>
+            `;
+        }
+        
+        // Function to format text with line breaks
+        function formatText(text) {
+            return text.replace(/\n/g, '<br>');
+        }
+        
+        // Function to use a sample question
+        function useQuestion(question) {
+            document.getElementById('question').value = question;
+        }
+        
+        // Function to add a sample call ID
+        function addSampleCallId(callId) {
+            if (!callIds.includes(callId)) {
+                callIds.push(callId);
+                updateCallIdList();
+            }
+        }
+    </script>
+</body>
+</html>
