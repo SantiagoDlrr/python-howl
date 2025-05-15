@@ -62,6 +62,42 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+
+CATEGORIES = ["Sales", "Technology", "HR", "Customer Support",
+              "Finance", "Marketing", "Operations", "Other"]
+
+def ensure_list(val):
+    """Accept str | list | None → list[str]."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return [str(x).strip() for x in val if str(x).strip()]
+    if isinstance(val, str):
+        return [x.strip() for x in val.split(",") if x.strip()]
+    return []
+
+def classify_call(text: str, model_name: str = None) -> str:
+    """
+    Quick 1-shot classification with Gemini.
+    Returns a value from CATEGORIES (or 'Other' on failure).
+    """
+    try:
+        model = get_gemini_model(model_name or runtime_settings.llm_model)
+        prompt = (
+            "Choose the single most relevant category for this call from "
+            f"{CATEGORIES}. Just return the word.\n\nTranscript:\n{text}"
+        )
+        resp = model.generate_content(prompt)
+        guess = (resp.text or "").strip().splitlines()[0]
+        return guess if guess in CATEGORIES else "Other"
+    except Exception:
+        logger.warning("Category classification failed", exc_info=True)
+        return "Other"
+
+
+
+
+
 # --------------------------------------------------------------------------- #
 # Runtime settings – default **Gemini**
 class TranscriptionEngine(str, Enum):
@@ -203,6 +239,10 @@ def root():
 # --------------------------------------------------------------------------- #
 # Helpers for LLM report
 def create_llm_prompt(text: str) -> str:
+    categories = ["Sales", "Technology", "HR", "Customer Support",
+                  "Finance", "Marketing", "Operations", "Other"]
+
+
     return f"""
     You are an expert call analyst. Produce JSON with:
     {{
@@ -211,20 +251,22 @@ def create_llm_prompt(text: str) -> str:
     "emotions": [...],
     "sentiment": "...",
     "output": "...",
-    "riskWords": "...",
+    "riskWords": [...],
     "summary": "...",
-    "rating": "..."
+    "rating": "...",
+    "category": "one value from {categories}"
     }}
     Transcript:
     --- START ---
     {text}
     --- END ---
-    Note: rating is on a scale of 0-100
+      • rating is 0-5
+      • category **must** be exactly one of the values shown above
     """
 
 def get_default_report():
     keys = ["feedback", "keyTopics", "emotions",
-            "sentiment", "output", "riskWords", "summary", "rating"]
+            "sentiment", "output", "riskWords", "summary", "rating", "category"]
     return {k: f"Error generating {k}." for k in keys}
 
 def generate_report(text: str) -> Dict[str, Any]:
@@ -350,6 +392,7 @@ def normalise_date(raw: str) -> Optional[str]:
 # ----------------------------- /upload ------------------------------------- #
 @app.post("/upload")
 async def upload_audio(file: UploadFile = File(...)):
+
     if not file:
         raise HTTPException(status_code=400, detail="No file received.")
     # if transcriber is None and runtime_settings.transcription_engine == TranscriptionEngine.whisperx:
@@ -424,6 +467,23 @@ async def upload_audio(file: UploadFile = File(...)):
     # LLM report
     report = generate_report(full_text)
 
+    # --- post-processing ------------------------------------------------
+    # 1) make sure riskWords is a non-empty list
+    report["riskWords"] = ensure_list(report.get("riskWords"))
+    if not report["riskWords"]:
+        # fall-back: simple keyword sweep
+        fallback_risks = ["refund", "cancel", "angry", "frustrated",
+                          "lawsuit", "escalate", "complaint"]
+        hits = [w for w in fallback_risks if w in full_text.lower()]
+        report["riskWords"] = hits or ["none-found"]
+
+    # 2) add / overwrite the category
+    report["category"] = classify_call(full_text)
+
+
+
+
+
     # Save (optional)
     transcript_id = str(uuid.uuid4())
     try:
@@ -451,9 +511,9 @@ async def upload_audio(file: UploadFile = File(...)):
         "id": transcript_id,
         "name": file.filename,
         "date": rec_date,
-        "type": "Sin categoría",
+        "type": report.get("category", "Sin categoría"),
         "duration": duration_str,
-        "rating": 0,
+        "rating": report.get("rating", 0),
         "report": report,
         "transcript": diarized,
     }
@@ -479,7 +539,7 @@ def chat_endpoint(req: ChatRequest):
     )
     rpt = data.get("report_data", {})
     oci_emotion = data.get("oci_emotion", "N/A")
-
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
     context = "\n".join([
         "You are a helpful assistant analysing a recorded call.",
         "--- Report ---",
@@ -488,11 +548,13 @@ def chat_endpoint(req: ChatRequest):
         f"Emotions: {', '.join(rpt.get('emotions', []))}",
         f"Sentiment: {rpt.get('sentiment','')}",
         f"Output: {rpt.get('output','')}",
-        f"RiskWords: {rpt.get('riskWords','')}",
+        # f"RiskWords: {rpt.get('riskWords','')}",
+        f"RiskWords: {', '.join(ensure_list(rpt.get('riskWords')))}",
         f"Summary: {rpt.get('summary','')}",
         f"OCI sentiment: {oci_emotion}",
         "--- Transcript ---",
         transcript,
+        # add logging to make sure risk words work properly and dont return empty string
     ])
 
     messages = [
