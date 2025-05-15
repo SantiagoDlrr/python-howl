@@ -28,6 +28,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Add near the top of the file, after imports
+from huggingface_hub import login
+
+# Initialize Hugging Face with token
+hf_token = os.getenv("HF_TOKEN")
+if hf_token:
+    login(token=hf_token)
+    logger.info("Logged in to Hugging Face Hub")
+else:
+    logger.warning("HF_TOKEN not set - model downloads may fail")
+
 # --------------------------------------------------------------------------- #
 # Fake Database Connection (for testing without actual PostgreSQL)
 # --------------------------------------------------------------------------- #
