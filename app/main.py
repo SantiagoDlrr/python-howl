@@ -583,7 +583,7 @@ from db import query
 
 @app.get("/testdb")
 async def get_users():
-    sql = "SELECT * "
+    sql = "SELECT * FROM CALLS;"
     return await query(sql)
 
 

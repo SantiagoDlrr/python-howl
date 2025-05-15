@@ -15,7 +15,7 @@ async def get_pool():
             user=os.getenv("DB_USER"),
             password=os.getenv("DB_PASSWORD"),
             database=os.getenv("DB_NAME"),
-            ssl='false'  # Or use ssl=False for local dev
+            ssl='require'  # Or use ssl=False for local dev
         )
     return _pool
 
