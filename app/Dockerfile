@@ -22,22 +22,27 @@ RUN pip install --no-cache-dir -r requirements2.txt
 COPY requirements3.txt .
 RUN pip install --no-cache-dir -r requirements3.txt
 
+COPY requirements4.txt .
+RUN pip install --no-cache-dir -r requirements4.txt
 
 
 # Copy app files into the container
 COPY . .
 
-#Uncomment below to use https
-COPY cert.pem /app/cert.pem
-COPY key.pem /app/key.pem
-EXPOSE 443
-
-# Uncomment below for local development
-# EXPOSE 8000 
+COPY ./static/rag_chat.html /app/static/rag_chat.html
 
 
 #Uncomment below to use https
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "key.pem", "--ssl-certfile", "cert.pem"]
+# COPY cert.pem /app/cert.pem
+# COPY key.pem /app/key.pem
+# EXPOSE 443
 
 # Uncomment below for local development
-# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000 
+
+
+#Uncomment below to use https
+# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "key.pem", "--ssl-certfile", "cert.pem"]
+
+# Uncomment below for local development
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
