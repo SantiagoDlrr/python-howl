@@ -29,6 +29,9 @@ RUN pip install --no-cache-dir -r requirements4.txt
 # Copy app files into the container
 COPY . .
 
+COPY ./static/rag_chat.html /app/static/rag_chat.html
+
+
 #Uncomment below to use https
 # COPY cert.pem /app/cert.pem
 # COPY key.pem /app/key.pem

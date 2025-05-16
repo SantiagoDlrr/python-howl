@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Chat Test Interface</title>
+    <title>RAG Chat Test Interface (Polling)</title>
     <style>
         :root {
             --primary: #f6735c;
@@ -305,6 +305,36 @@
             margin-bottom: 1rem;
         }
         
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+        }
+        
+        .status-pending {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-processing {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .status-completed {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-failed {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -313,7 +343,7 @@
 </head>
 <body>
     <div class="wrapper">
-        <h1>RAG Chat Test Interface</h1>
+        <h1>RAG Chat Test Interface (Polling)</h1>
         
         <div class="container">
             <div class="panel">
@@ -385,6 +415,8 @@
     <script>
         // Array to store the call IDs
         let callIds = [];
+        let currentRequestId = null;
+        let pollingInterval = null;
         
         // Function to add a call ID
         function addCallId() {
@@ -443,11 +475,14 @@
                 return;
             }
             
+            // Stop any existing polling
+            stopPolling();
+            
             // Show loading message
             document.getElementById('response-container').innerHTML = `
                 <div class="loading">
                     <div class="loading-spinner"></div>
-                    <span>Processing your question...</span>
+                    <span>Starting request...</span>
                 </div>
             `;
             
@@ -458,8 +493,8 @@
             };
             
             try {
-                // Send request to the API
-                const response = await fetch('http://localhost:8000/rag_chat', {
+                // Send request to start the RAG chat process
+                const response = await fetch('http://localhost:8000/rag_chat/start', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -472,11 +507,93 @@
                 }
                 
                 const data = await response.json();
-                displayResponse(data);
+                currentRequestId = data.request_id;
+                
+                // Show initial status
+                showStatus(data.request_id, data.status);
+                
+                // Start polling for updates
+                startPolling(data.request_id);
                 
             } catch (error) {
                 showError(`Error: ${error.message}`);
             }
+        }
+        
+        // Function to start polling for status updates
+        function startPolling(requestId) {
+            // Clear any existing polling interval
+            stopPolling();
+            
+            // Set up new polling interval
+            pollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`http://localhost:8000/rag_chat/status/${requestId}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Update the status display
+                    showStatus(data.request_id, data.status);
+                    
+                    // If the request is completed or failed, stop polling and display the result
+                    if (data.status === 'completed') {
+                        stopPolling();
+                        displayResponse(data.result);
+                    } else if (data.status === 'failed') {
+                        stopPolling();
+                        showError(`Request failed: ${data.error || 'Unknown error'}`);
+                    }
+                    
+                } catch (error) {
+                    console.error('Polling error:', error);
+                    // Don't stop polling on temporary errors
+                }
+            }, 1000); // Poll every second
+        }
+        
+        // Function to stop polling
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+        
+        // Function to show the current status
+        function showStatus(requestId, status) {
+            const container = document.getElementById('response-container');
+            
+            let statusClass = '';
+            switch (status) {
+                case 'pending':
+                    statusClass = 'status-pending';
+                    break;
+                case 'processing':
+                    statusClass = 'status-processing';
+                    break;
+                case 'completed':
+                    statusClass = 'status-completed';
+                    break;
+                case 'failed':
+                    statusClass = 'status-failed';
+                    break;
+                default:
+                    statusClass = 'status-pending';
+            }
+            
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>
+                        <div class="status-badge ${statusClass}">${status}</div>
+                        <p>Request ID: ${requestId}</p>
+                    </div>
+                </div>
+            `;
         }
         
         // Function to display the response
