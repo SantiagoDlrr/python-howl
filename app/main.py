@@ -31,7 +31,7 @@ from oci.ai_language import AIServiceLanguageClient
 from oci.ai_language.models import (
     BatchDetectLanguageSentimentsDetails, TextDocument,
 )
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -40,7 +40,8 @@ import os
 
 # from transcription_module import AudioTranscriber
 from temp_storage import save_transcript, load_transcript   # optional utility
-from rag_chat import rag_chat as rag_chat_function  # Import the RAG chat function
+from rag_chat import rag_chat as rag_chat_function, process_rag_chat_request, create_rag_chat_request  # Import RAG chat functions
+from request_tracker import request_tracker  # Import request tracker
 
 # --------------------------------------------------------------------------- #
 # Logging
@@ -211,6 +212,11 @@ def root():
 def rag_chat_ui():
     """Serve the RAG chat UI HTML page"""
     return FileResponse("static/rag_chat.html")
+
+@app.get("/rag_polling")
+def rag_chat_polling_ui():
+    """Serve the polling-based RAG chat UI HTML page"""
+    return FileResponse("static/rag_chat_polling.html")
 
 # --------------------------------------------------------------------------- #
 # Helpers for LLM report
@@ -552,7 +558,7 @@ async def rag_chat_endpoint(req: RAGChatRequest):
         # Call the RAG chat function from our imported module (now async)
         response = await rag_chat_function(
             question=req.question,
-            call_ids=req.call_ids,  # We'll ignore this and use hardcoded 122 for now
+            call_ids=req.call_ids,
             model_name=runtime_settings.llm_model,
             api_key=GEMINI_API_KEY
         )
@@ -561,6 +567,86 @@ async def rag_chat_endpoint(req: RAGChatRequest):
     except Exception as e:
         logger.error(f"RAG chat failed: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail="RAG chat service error.")
+
+# --------------------------------------------------------------------------- #
+# --------------------- Polling-Based RAG Chat Endpoints -------------------- #
+class RAGChatStartRequest(BaseModel):
+    question: str
+    call_ids: List[str]
+
+class RAGChatStartResponse(BaseModel):
+    request_id: str
+    status: str
+
+class RAGChatStatusResponse(BaseModel):
+    request_id: str
+    status: str
+    created_at: float
+    updated_at: float
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+@app.post("/rag_chat/start", response_model=RAGChatStartResponse)
+async def start_rag_chat_endpoint(req: RAGChatStartRequest, background_tasks: BackgroundTasks):
+    """
+    Start a new RAG chat request and return a request ID for polling.
+    Uses FastAPI's BackgroundTasks to process the request asynchronously.
+
+    Args:
+        req: Request containing the question and list of call IDs to search
+        background_tasks: FastAPI's BackgroundTasks for running tasks in the background
+
+    Returns:
+        Dictionary with request ID and initial status
+    """
+    if not req.question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    if not req.call_ids:
+        raise HTTPException(status_code=400, detail="At least one call ID must be provided.")
+
+    try:
+        # Create a new request ID
+        request_id = create_rag_chat_request()
+
+        # Add the processing task to background tasks
+        background_tasks.add_task(
+            process_rag_chat_request,
+            request_id=request_id,
+            question=req.question,
+            call_ids=req.call_ids,
+            model_name=runtime_settings.llm_model,
+            api_key=GEMINI_API_KEY
+        )
+
+        # Get the initial status
+        status = request_tracker.get_request_status(request_id)
+
+        return {
+            "request_id": request_id,
+            "status": status["status"]
+        }
+    except Exception as e:
+        logger.error(f"Failed to start RAG chat request: {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Failed to start RAG chat request.")
+
+@app.get("/rag_chat/status/{request_id}", response_model=RAGChatStatusResponse)
+async def get_rag_chat_status(request_id: str):
+    """
+    Get the status of a RAG chat request.
+
+    Args:
+        request_id: The ID of the request to check
+
+    Returns:
+        Dictionary with request status and result (if available)
+    """
+    status = request_tracker.get_request_status(request_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail="Request not found.")
+
+    return status
 
 # --------------------------------------------------------------------------- #
 # Dev utilities

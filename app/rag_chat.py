@@ -5,11 +5,13 @@ RAG-based chat module for answering questions about call transcripts:
   • Retrieves transcripts from database using call IDs
   • Performs semantic search over transcript chunks
   • Uses RAG to generate answers with source attribution
+  • Supports both synchronous and asynchronous processing
 """
 
 import json
 import logging
 import os
+import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
@@ -20,6 +22,9 @@ from embeddings.embedding_query_result import EmbeddingQueryResult
 # For LLM
 import google.generativeai as genai
 from functools import lru_cache
+
+# For request tracking
+from request_tracker import request_tracker, RequestStatus
 
 # Setup logging
 logging.basicConfig(
@@ -92,33 +97,33 @@ SAMPLE_TRANSCRIPTS = {
 async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
     """
     Retrieve transcripts from PostgreSQL database using call IDs.
-    
+
     Args:
         call_ids: List of call IDs to retrieve
-        
+
     Returns:
         Dictionary mapping call_ids to their transcript data
     """
     logger.info(f"Retrieving transcripts for call IDs: {call_ids}")
-    
+
     results = {}
-    
+
     try:
         from db import query
-        
+
         for call_id in call_ids:
             # Extract numeric ID from call-id format if needed
             numeric_id = call_id
             if call_id.startswith("call-"):
                 numeric_id = call_id.split("-")[1]
-            
+
             # Use the PostgreSQL function to get transcript
             sql = f"SELECT get_transcript_by_call_id({numeric_id}) as transcript;"
             query_result = await query(sql)
-            
+
             if query_result and len(query_result) > 0:
                 transcript_text = query_result[0].get('transcript')
-                
+
                 if transcript_text:
                     # Create a transcript object with the retrieved text
                     results[call_id] = {
@@ -131,7 +136,7 @@ async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
                     }
     except Exception as e:
         logger.error(f"Database query failed: {e}")
-    
+
     return results
 
 # --------------------------------------------------------------------------- #
@@ -141,22 +146,22 @@ async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
 def chunk_transcript(transcript: List[Dict[str, Any]], chunk_size: int = 3) -> List[Dict[str, Any]]:
     """
     Split a transcript into chunks of specified size.
-    
+
     Args:
         transcript: List of transcript segments
         chunk_size: Number of segments per chunk
-        
+
     Returns:
         List of chunks, each containing segment data and metadata
     """
     chunks = []
-    
+
     for i in range(0, len(transcript), chunk_size):
         chunk_segments = transcript[i:i+chunk_size]
-        
+
         # Create a single text from the segments
         chunk_text = " ".join([f"{seg['speaker']}: {seg['text']}" for seg in chunk_segments])
-        
+
         # Store chunk with metadata
         chunks.append({
             "text": chunk_text,
@@ -164,7 +169,7 @@ def chunk_transcript(transcript: List[Dict[str, Any]], chunk_size: int = 3) -> L
             "end_segment": min(i + chunk_size - 1, len(transcript) - 1),
             "segments": chunk_segments
         })
-    
+
     return chunks
 
 # --------------------------------------------------------------------------- #
@@ -182,69 +187,69 @@ def initialize_embeddings_model() -> Embeddings:
 def process_transcripts_for_embeddings(transcripts: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     """
     Process transcripts into chunks suitable for embedding.
-    
+
     Args:
         transcripts: Dictionary of transcripts by call_id
-        
+
     Returns:
         Dictionary mapping call_ids to their chunked transcripts
     """
     chunked_transcripts = {}
-    
+
     for call_id, transcript_data in transcripts.items():
         chunks = chunk_transcript(transcript_data["transcript"])
         chunked_transcripts[call_id] = chunks
-    
+
     return chunked_transcripts
 
-def perform_semantic_search(question: str, chunked_transcripts: Dict[str, List[Dict[str, Any]]], 
+def perform_semantic_search(question: str, chunked_transcripts: Dict[str, List[Dict[str, Any]]],
                            embeddings_model: Embeddings, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Perform semantic search over transcript chunks.
-    
+
     Args:
         question: User's question
         chunked_transcripts: Dictionary of chunked transcripts by call_id
         embeddings_model: Initialized embeddings model
         top_k: Number of top results to return
-        
+
     Returns:
         List of relevant chunks with their metadata
     """
     # In a real implementation, we would use the embeddings from the database
     # For this demo, we'll generate embeddings on the fly
-    
+
     # Flatten all chunks from all transcripts
     all_chunks = []
     chunk_mapping = {}  # To map back to original call_id and chunk
-    
+
     for call_id, chunks in chunked_transcripts.items():
         for i, chunk in enumerate(chunks):
             all_chunks.append(chunk["text"])
             chunk_mapping[len(all_chunks) - 1] = {"call_id": call_id, "chunk_index": i}
-    
+
     # Generate embeddings for all chunks
     chunk_embeddings = embeddings_model.generate_embeddings(all_chunks)
-    
+
     # Generate embedding for the question
     question_embedding = embeddings_model.generate_embeddings([question])[0]
-    
+
     # Calculate similarity scores (simplified for demo)
     # In a real implementation, we would use a vector database like Pinecone
     import numpy as np
     from sklearn.metrics.pairwise import cosine_similarity
-    
+
     similarities = cosine_similarity([question_embedding], chunk_embeddings)[0]
-    
+
     # Get top-k results
     top_indices = np.argsort(similarities)[-top_k:][::-1]
-    
+
     results = []
     for idx in top_indices:
         call_id = chunk_mapping[idx]["call_id"]
         chunk_index = chunk_mapping[idx]["chunk_index"]
         chunk = chunked_transcripts[call_id][chunk_index]
-        
+
         results.append({
             "call_id": call_id,
             "text": chunk["text"],
@@ -253,7 +258,7 @@ def perform_semantic_search(question: str, chunked_transcripts: Dict[str, List[D
             "start_segment": chunk["start_segment"],
             "end_segment": chunk["end_segment"]
         })
-    
+
     return results
 
 # --------------------------------------------------------------------------- #
@@ -266,46 +271,46 @@ def get_gemini_model(model_name: str, api_key: str):
     genai.configure(api_key=api_key)
     return genai.GenerativeModel(model_name)
 
-def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]], 
+def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
                          model_name: str, api_key: str) -> Dict[str, Any]:
     """
     Generate a response using RAG with the Gemini model.
-    
+
     Args:
         question: User's question
         relevant_chunks: List of relevant transcript chunks
         model_name: Name of the Gemini model to use
         api_key: Gemini API key
-        
+
     Returns:
         Dictionary containing the answer and source attributions
     """
     # Create context from relevant chunks
     context = "\n\n".join([
-        f"From Call {chunk['call_id']}:\n{chunk['text']}" 
+        f"From Call {chunk['call_id']}:\n{chunk['text']}"
         for chunk in relevant_chunks
     ])
-    
+
     # Create prompt for the model
     prompt = f"""
     You are an assistant that answers questions about customer service calls.
     Answer the following question based ONLY on the provided context from call transcripts.
-    
+
     Context:
     {context}
-    
+
     Question: {question}
-    
+
     Provide a clear and concise answer. If the answer is not in the context, say "I don't have enough information to answer this question."
     Include specific references to which call(s) you got the information from.
     """
-    
+
     try:
         # Get model and generate response
         model = get_gemini_model(model_name, api_key)
         response = model.generate_content(prompt)
         answer = response.text.strip() if response.text else ""
-        
+
         # Create source attributions
         sources = []
         for chunk in relevant_chunks:
@@ -315,12 +320,12 @@ def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
                     "text": chunk["text"],
                     "score": chunk["score"]
                 })
-        
+
         return {
             "answer": answer,
             "sources": sources
         }
-    
+
     except Exception as e:
         logger.error(f"Error generating RAG response: {e}")
         return {
@@ -334,39 +339,39 @@ def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
 
 async def rag_chat(question: str, call_ids: List[str], model_name: str, api_key: str) -> Dict[str, Any]:
     """
-    Main function to handle RAG-based chat.
-    
+    Main function to handle RAG-based chat (synchronous version).
+
     Args:
         question: User's question
         call_ids: List of call IDs to search in
         model_name: Name of the Gemini model to use
         api_key: Gemini API key
-        
+
     Returns:
         Dictionary containing the answer and source attributions
     """
     try:
         # 1. Retrieve transcripts from database (now async)
         transcripts = await get_transcripts_from_db(call_ids)
-        
+
         if not transcripts:
             return {
                 "answer": "No transcripts found for the provided call IDs.",
                 "sources": []
             }
-        
+
         # 2. Process transcripts into chunks
         chunked_transcripts = process_transcripts_for_embeddings(transcripts)
-        
+
         # 3. Initialize embeddings model
         embeddings_model = initialize_embeddings_model()
-        
+
         # 4. Perform semantic search
         relevant_chunks = perform_semantic_search(question, chunked_transcripts, embeddings_model)
-        
+
         # 5. Generate RAG response
         response = generate_rag_response(question, relevant_chunks, model_name, api_key)
-        
+
         return response
     except Exception as e:
         logger.error(f"RAG chat error: {e}")
@@ -374,3 +379,45 @@ async def rag_chat(question: str, call_ids: List[str], model_name: str, api_key:
             "answer": f"An error occurred while processing your question: {str(e)}",
             "sources": []
         }
+
+async def process_rag_chat_request(request_id: str, question: str, call_ids: List[str], model_name: str, api_key: str) -> None:
+    """
+    Process a RAG chat request asynchronously.
+    This function is designed to be used with FastAPI's BackgroundTasks.
+
+    Args:
+        request_id: The ID of the request
+        question: User's question
+        call_ids: List of call IDs to search in
+        model_name: Name of the Gemini model to use
+        api_key: Gemini API key
+    """
+    logger.info(f"Starting asynchronous RAG chat for request {request_id}")
+
+    # Update request status to processing
+    request_tracker.update_request_status(request_id, RequestStatus.PROCESSING)
+
+    try:
+        # Call the RAG chat function
+        response = await rag_chat(question, call_ids, model_name, api_key)
+
+        # Update request with the result
+        request_tracker.set_request_result(request_id, response)
+        logger.info(f"Completed asynchronous RAG chat for request {request_id}")
+
+    except Exception as e:
+        # Update request with the error
+        error_message = f"Error processing RAG chat request: {str(e)}"
+        logger.error(error_message)
+        request_tracker.set_request_error(request_id, error_message)
+
+def create_rag_chat_request() -> str:
+    """
+    Create a new RAG chat request and return the request ID.
+
+    Returns:
+        str: The request ID
+    """
+    # Create a new request
+    request_id = request_tracker.create_request()
+    return request_id
