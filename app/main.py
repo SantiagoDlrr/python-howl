@@ -19,7 +19,7 @@ import logging
 from enum import Enum
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import date, datetime          # ← already had `date`, add `datetime`
+from datetime import date, datetime          
 from mutagen import File as MutagenFile
 # import torch
 import uvicorn
@@ -37,13 +37,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
-# from fastapi import FastAPI
 from db import query
 
 # from transcription_module import AudioTranscriber
-from temp_storage import save_transcript, load_transcript   # optional utility
-from rag_chat import rag_chat as rag_chat_function, process_rag_chat_request, create_rag_chat_request  # Import RAG chat functions
-from request_tracker import request_tracker  # Import request tracker
+from temp_storage import save_transcript, load_transcript  
+from rag_chat import rag_chat as rag_chat_function, process_rag_chat_request, create_rag_chat_request 
+from request_tracker import request_tracker  
 
 import subprocess, shlex, wave, contextlib
 from mutagen.id3 import ID3
@@ -76,6 +75,53 @@ app.add_middleware(
 )
 
 
+
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --------------------------------------------------------------------------- #
+# Runtime settings – default **Gemini**
+class TranscriptionEngine(str, Enum):
+    whisperx = "whisperx"
+    gemini = "gemini"
+
+class RuntimeSettings(BaseModel):
+    transcription_engine: TranscriptionEngine = TranscriptionEngine.gemini
+    llm_model: str = "gemini-1.5-flash"
+
+runtime_settings = RuntimeSettings()
+
+@app.post("/settings", response_model=RuntimeSettings)
+def update_runtime_settings(payload: RuntimeSettings):
+    runtime_settings.transcription_engine = payload.transcription_engine
+    runtime_settings.llm_model = payload.llm_model
+    logger.info(f"Settings updated → {runtime_settings.dict()}")
+    return runtime_settings
+
+@app.get("/settings", response_model=RuntimeSettings)
+def read_runtime_settings():
+    return runtime_settings
+
+# --------------------------------------------------------------------------- #
+# Gemini helper: 
+
+
+
+
+@lru_cache(maxsize=8)
+def get_gemini_model(model_name: str):
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY not configured")
+    genai.configure(api_key=GEMINI_API_KEY)
+    return genai.GenerativeModel(model_name)
+
+
+# ---------------------------------------------------------------------------
+# Gemini audio helper
+
+
+
 CATEGORIES = ["Sales", "Technology", "HR", "Customer Support",
               "Finance", "Marketing", "Operations", "Other"]
 
@@ -106,50 +152,6 @@ def classify_call(text: str, model_name: str = None) -> str:
     except Exception:
         logger.warning("Category classification failed", exc_info=True)
         return "Other"
-
-
-
-
-
-# Mount static files directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# --------------------------------------------------------------------------- #
-# Runtime settings – default **Gemini**
-class TranscriptionEngine(str, Enum):
-    whisperx = "whisperx"
-    gemini = "gemini"
-
-class RuntimeSettings(BaseModel):
-    transcription_engine: TranscriptionEngine = TranscriptionEngine.gemini
-    llm_model: str = "gemini-1.5-flash"
-
-runtime_settings = RuntimeSettings()
-
-@app.post("/settings", response_model=RuntimeSettings)
-def update_runtime_settings(payload: RuntimeSettings):
-    runtime_settings.transcription_engine = payload.transcription_engine
-    runtime_settings.llm_model = payload.llm_model
-    logger.info(f"Settings updated → {runtime_settings.dict()}")
-    return runtime_settings
-
-@app.get("/settings", response_model=RuntimeSettings)
-def read_runtime_settings():
-    return runtime_settings
-
-# --------------------------------------------------------------------------- #
-# Gemini helper: cached model factory
-@lru_cache(maxsize=8)
-def get_gemini_model(model_name: str):
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY not configured")
-    genai.configure(api_key=GEMINI_API_KEY)
-    return genai.GenerativeModel(model_name)
-
-
-# ---------------------------------------------------------------------------
-# Gemini audio helper
-
 
 
 logger = logging.getLogger(__name__)
@@ -214,20 +216,6 @@ def transcribe_with_gemini(audio_path: str, model_name: str) -> List[Dict[str, A
 
 
 
-# --------------------------------------------------------------------------- #
-# OCI Language client (optional)
-language_client: Optional[AIServiceLanguageClient] = None
-try:
-    if os.getenv("OCI_RESOURCE_PRINCIPAL_VERSION"):
-        signer = oci.auth.signers.get_resource_principals_signer()
-        language_client = AIServiceLanguageClient(config={}, signer=signer)
-    else:
-        oci_conf = from_file()
-        language_client = AIServiceLanguageClient(oci_conf)
-    logger.info("OCI Language client ready.")
-except Exception:
-    logger.error("OCI init failed – sentiment disabled.", exc_info=True)
-    language_client = None
 
 # --------------------------------------------------------------------------- #
 # WhisperX transcriber (global – may remain unused if Gemini chosen)
@@ -249,15 +237,6 @@ except Exception:
 def root():
     return {"message": "Audio Analysis API ready."}
 
-@app.get("/rag")
-def rag_chat_ui():
-    """Serve the RAG chat UI HTML page"""
-    return FileResponse("static/rag_chat.html")
-
-@app.get("/rag_polling")
-def rag_chat_polling_ui():
-    """Serve the polling-based RAG chat UI HTML page"""
-    return FileResponse("static/rag_chat_polling.html")
 
 # --------------------------------------------------------------------------- #
 # Helpers for LLM report
@@ -452,6 +431,21 @@ def assign_speaker_names(full_text: str, diarized: List[Dict[str, Any]], model_n
         return diarized
 
 
+# --------------------------------------------------------------------------- #
+# OCI Language client (optional)
+language_client: Optional[AIServiceLanguageClient] = None
+try:
+    if os.getenv("OCI_RESOURCE_PRINCIPAL_VERSION"):
+        signer = oci.auth.signers.get_resource_principals_signer()
+        language_client = AIServiceLanguageClient(config={}, signer=signer)
+    else:
+        oci_conf = from_file()
+        language_client = AIServiceLanguageClient(oci_conf)
+    logger.info("OCI Language client ready.")
+except Exception:
+    logger.error("OCI init failed – sentiment disabled.", exc_info=True)
+    language_client = None
+
 
 
 # --------------------------------------------------------------------------- #
@@ -645,7 +639,22 @@ def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=503, detail="LLM service error.")
 
 # --------------------------------------------------------------------------- #
+# ------------------------------ /rag ---------------------------------- #
+
+
+@app.get("/rag")
+def rag_chat_ui():
+    """Serve the RAG chat UI HTML page"""
+    return FileResponse("static/rag_chat.html")
+
+@app.get("/rag_polling")
+def rag_chat_polling_ui():
+    """Serve the polling-based RAG chat UI HTML page"""
+    return FileResponse("static/rag_chat_polling.html")
+
+# --------------------------------------------------------------------------- #
 # ------------------------------ /rag_chat ---------------------------------- #
+
 class RAGChatRequest(BaseModel):
     question: str
     call_ids: List[str]
@@ -763,7 +772,7 @@ async def get_rag_chat_status(request_id: str):
     return status
 
 # --------------------------------------------------------------------------- #
-# Dev utilities
+# --------------------- Test Endpoints -------------------- #
 @app.get("/test_oci")
 def test_oci():
     if not language_client:
@@ -773,10 +782,6 @@ def test_oci():
     req = BatchDetectLanguageSentimentsDetails(documents=docs)
     resp = language_client.batch_detect_language_sentiments(req)
     return {"data": str(resp.data)}
-
-
-
-
 
 
 @app.get("/testdb")
