@@ -50,6 +50,13 @@ from mutagen.mp4 import MP4
 import logging
 import json
 
+# main.py  (top of file, keep the rest unchanged)
+from secure_prompts import SecurePromptManager
+import mimetypes                 
+
+
+
+
 # --------------------------------------------------------------------------- #
 # Logging
 logging.basicConfig(
@@ -92,6 +99,8 @@ class RuntimeSettings(BaseModel):
 
 runtime_settings = RuntimeSettings()
 
+
+
 @app.post("/settings", response_model=RuntimeSettings)
 def update_runtime_settings(payload: RuntimeSettings):
     runtime_settings.transcription_engine = payload.transcription_engine
@@ -102,6 +111,18 @@ def update_runtime_settings(payload: RuntimeSettings):
 @app.get("/settings", response_model=RuntimeSettings)
 def read_runtime_settings():
     return runtime_settings
+
+
+# -- SecurePromptManager -----------------------------------------------
+@lru_cache(maxsize=1)
+def get_spm(model_name: str) -> SecurePromptManager:
+    """
+    Singleton-ish helper that re-creates the SPM only when the model name
+    actually changes.  (Keeps memory low & reuses LangChain objects.)
+    """
+    return SecurePromptManager(api_key=GEMINI_API_KEY,
+                               model_name=model_name)
+
 
 # --------------------------------------------------------------------------- #
 # Gemini helper: 
@@ -497,18 +518,48 @@ async def upload_audio(file: UploadFile = File(...)):
 
     # Transcription
     try:
-        if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
-            diarized = transcribe_with_gemini(temp_path, runtime_settings.llm_model)
+    #     if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
+    #         diarized = transcribe_with_gemini(temp_path, runtime_settings.llm_model)
         # else:
         #     diarized = transcriber.transcribe_and_diarize(temp_path)
+          
+        if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
+            spm = get_spm(runtime_settings.llm_model)
+            # --- secure transcription ------------------------------------
+            mime, _ = mimetypes.guess_type(temp_path)
+            with open(temp_path, "rb") as f:
+                diarized = await spm.secure_transcribe_audio(f.read(),
+                                                             mime or "application/octet-stream")
+        # else:
+        #     diarized = transcriber.transcribe_and_diarize(temp_path)
+
+
+
     except Exception as e:
         logger.error("Transcription failed", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
+    # full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)
+
+    # diarized = assign_speaker_names(full_text, diarized, runtime_settings.llm_model)
+    # full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)  # Refresh full_text with updated names
+
+
     full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)
 
-    diarized = assign_speaker_names(full_text, diarized, runtime_settings.llm_model)
-    full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)  # Refresh full_text with updated names
+    # -------- secure speaker remapping ---------------------------------
+    spm = get_spm(runtime_settings.llm_model)
+    mappings = await spm.secure_identify_speakers(full_text)
+    speaker_map = {m["old"]: m["new"] for m in mappings}
+
+    for seg in diarized:
+        if seg["speaker"] in speaker_map:
+            seg["speaker"] = speaker_map[seg["speaker"]]
+
+    full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)
+
+
+
 
 
     # OCI Sentiment
@@ -529,7 +580,10 @@ async def upload_audio(file: UploadFile = File(...)):
             logger.error("OCI sentiment failed", exc_info=True)
 
     # LLM report
-    report = generate_report(full_text)
+    # report = generate_report(full_text)
+
+    report = await spm.secure_generate_report(full_text)
+
 
     # --- post-processing ------------------------------------------------
     # 1) make sure riskWords is a non-empty list
