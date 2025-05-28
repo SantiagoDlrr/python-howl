@@ -33,7 +33,7 @@ COPY ./static/rag_chat.html /app/static/rag_chat.html
 
 
 #Uncomment below to use https
-# COPY cert.pem /app/cert.pem
+# COPY fullchain.pem /app/fullchain.pem
 # COPY key.pem /app/key.pem
 # EXPOSE 443
 

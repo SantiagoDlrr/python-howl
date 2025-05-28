@@ -1,3 +1,5 @@
 pinecone
 dotenv
 asyncpg
+langchain 
+langchain-google-genai

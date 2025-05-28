@@ -16,15 +16,15 @@ import json
 import uuid
 import gc
 import logging
-from datetime import date
 from enum import Enum
 from functools import lru_cache
-from typing import List, Dict, Any, Optional
-from datetime import date, datetime          # ← already had `date`, add `datetime`
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import date, datetime          
 from mutagen import File as MutagenFile
 # import torch
 import uvicorn
 import google.generativeai as genai
+from google.generativeai import GenerationConfig
 import oci
 from oci.config import from_file
 from oci.ai_language import AIServiceLanguageClient
@@ -37,11 +37,25 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
+from db import query
 
 # from transcription_module import AudioTranscriber
-from temp_storage import save_transcript, load_transcript   # optional utility
-from rag_chat import rag_chat as rag_chat_function, process_rag_chat_request, create_rag_chat_request  # Import RAG chat functions
-from request_tracker import request_tracker  # Import request tracker
+from temp_storage import save_transcript, load_transcript  
+from rag_chat import rag_chat as rag_chat_function, process_rag_chat_request, create_rag_chat_request 
+from request_tracker import request_tracker  
+
+import subprocess, shlex, wave, contextlib
+from mutagen.id3 import ID3
+from mutagen.mp4 import MP4
+import logging
+import json
+
+# main.py  (top of file, keep the rest unchanged)
+from secure_prompts import SecurePromptManager
+import mimetypes                 
+
+
+
 
 # --------------------------------------------------------------------------- #
 # Logging
@@ -61,11 +75,72 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,
 )
+
+
+
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --------------------------------------------------------------------------- #
+# Runtime settings – default **Gemini**
+class TranscriptionEngine(str, Enum):
+    whisperx = "whisperx"
+    gemini = "gemini"
+
+class RuntimeSettings(BaseModel):
+    transcription_engine: TranscriptionEngine = TranscriptionEngine.gemini
+    llm_model: str = "gemini-1.5-flash"
+
+runtime_settings = RuntimeSettings()
+
+
+
+@app.post("/settings", response_model=RuntimeSettings)
+def update_runtime_settings(payload: RuntimeSettings):
+    runtime_settings.transcription_engine = payload.transcription_engine
+    runtime_settings.llm_model = payload.llm_model
+    logger.info(f"Settings updated → {runtime_settings.dict()}")
+    return runtime_settings
+
+@app.get("/settings", response_model=RuntimeSettings)
+def read_runtime_settings():
+    return runtime_settings
+
+
+# -- SecurePromptManager -----------------------------------------------
+@lru_cache(maxsize=1)
+def get_spm(model_name: str) -> SecurePromptManager:
+    """
+    Singleton-ish helper that re-creates the SPM only when the model name
+    actually changes.  (Keeps memory low & reuses LangChain objects.)
+    """
+    return SecurePromptManager(api_key=GEMINI_API_KEY,
+                               model_name=model_name)
+
+
+# --------------------------------------------------------------------------- #
+# Gemini helper: 
+
+
+
+
+@lru_cache(maxsize=8)
+def get_gemini_model(model_name: str):
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY not configured")
+    genai.configure(api_key=GEMINI_API_KEY)
+    return genai.GenerativeModel(model_name)
+
+
+# ---------------------------------------------------------------------------
+# Gemini audio helper
+
 
 
 CATEGORIES = ["Sales", "Technology", "HR", "Customer Support",
@@ -99,53 +174,6 @@ def classify_call(text: str, model_name: str = None) -> str:
         logger.warning("Category classification failed", exc_info=True)
         return "Other"
 
-
-
-
-
-# Mount static files directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# --------------------------------------------------------------------------- #
-# Runtime settings – default **Gemini**
-class TranscriptionEngine(str, Enum):
-    whisperx = "whisperx"
-    gemini = "gemini"
-
-class RuntimeSettings(BaseModel):
-    transcription_engine: TranscriptionEngine = TranscriptionEngine.gemini
-    llm_model: str = "gemini-1.5-flash"
-
-runtime_settings = RuntimeSettings()
-
-@app.post("/settings", response_model=RuntimeSettings)
-def update_runtime_settings(payload: RuntimeSettings):
-    runtime_settings.transcription_engine = payload.transcription_engine
-    runtime_settings.llm_model = payload.llm_model
-    logger.info(f"Settings updated → {runtime_settings.dict()}")
-    return runtime_settings
-
-@app.get("/settings", response_model=RuntimeSettings)
-def read_runtime_settings():
-    return runtime_settings
-
-# --------------------------------------------------------------------------- #
-# Gemini helper: cached model factory
-@lru_cache(maxsize=8)
-def get_gemini_model(model_name: str):
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY not configured")
-    genai.configure(api_key=GEMINI_API_KEY)
-    return genai.GenerativeModel(model_name)
-
-
-# ---------------------------------------------------------------------------
-# Gemini audio helper
-
-import os, json, logging
-from typing import List, Dict, Any
-import google.generativeai as genai
-from google.generativeai import GenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -209,20 +237,6 @@ def transcribe_with_gemini(audio_path: str, model_name: str) -> List[Dict[str, A
 
 
 
-# --------------------------------------------------------------------------- #
-# OCI Language client (optional)
-language_client: Optional[AIServiceLanguageClient] = None
-try:
-    if os.getenv("OCI_RESOURCE_PRINCIPAL_VERSION"):
-        signer = oci.auth.signers.get_resource_principals_signer()
-        language_client = AIServiceLanguageClient(config={}, signer=signer)
-    else:
-        oci_conf = from_file()
-        language_client = AIServiceLanguageClient(oci_conf)
-    logger.info("OCI Language client ready.")
-except Exception:
-    logger.error("OCI init failed – sentiment disabled.", exc_info=True)
-    language_client = None
 
 # --------------------------------------------------------------------------- #
 # WhisperX transcriber (global – may remain unused if Gemini chosen)
@@ -244,15 +258,6 @@ except Exception:
 def root():
     return {"message": "Audio Analysis API ready."}
 
-@app.get("/rag")
-def rag_chat_ui():
-    """Serve the RAG chat UI HTML page"""
-    return FileResponse("static/rag_chat.html")
-
-@app.get("/rag_polling")
-def rag_chat_polling_ui():
-    """Serve the polling-based RAG chat UI HTML page"""
-    return FileResponse("static/rag_chat_polling.html")
 
 # --------------------------------------------------------------------------- #
 # Helpers for LLM report
@@ -309,13 +314,7 @@ def generate_report(text: str) -> Dict[str, Any]:
         logger.error("Report generation failed", exc_info=True)
         return default
 
-import subprocess, shlex, wave, contextlib
-from mutagen import File as MutagenFile
-from mutagen.id3 import ID3
-from mutagen.mp4 import MP4
-from typing import Optional, Tuple
-from datetime import datetime
-import logging
+
 
 log = logging.getLogger(__name__)
 
@@ -405,6 +404,70 @@ def normalise_date(raw: str) -> Optional[str]:
     except ValueError:
         return None
 
+def assign_speaker_names(full_text: str, diarized: List[Dict[str, Any]], model_name: str) -> List[Dict[str, Any]]:
+    """
+    Use Gemini to infer speaker names based on context.
+    """
+    try:
+        prompt = f"""
+            Given this diarized transcript of a conversation:
+
+            {full_text}
+
+            Replace "SPEAKER_00", "SPEAKER_01", etc., with inferred real names or meaningful roles (e.g., "Carlos", "Ángel", "Agent", "Customer") based on the dialogue.
+
+            Return only valid JSON of the form:
+            [
+            {{ "old": "SPEAKER_00", "new": "Carlos" }},
+            {{ "old": "SPEAKER_01", "new": "Ángel" }}
+            ]
+            Only return the JSON – no explanation or code block markers.
+            """
+        model = get_gemini_model(model_name)
+        resp = model.generate_content(prompt)
+        raw = resp.text.strip() if resp.text else ""
+
+        # Strip code block markers if they exist
+        if raw.startswith("```json"):
+            raw = raw[7:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+
+        replacements = json.loads(raw)
+
+        speaker_map = {
+            r["old"]: r["new"]
+            for r in replacements
+            if isinstance(r, dict) and "old" in r and "new" in r
+        }
+
+        for seg in diarized:
+            if seg["speaker"] in speaker_map:
+                seg["speaker"] = speaker_map[seg["speaker"]]
+
+        return diarized
+
+    except Exception as e:
+        logger.error("Speaker renaming failed", exc_info=True)
+        return diarized
+
+
+# --------------------------------------------------------------------------- #
+# OCI Language client (optional)
+language_client: Optional[AIServiceLanguageClient] = None
+try:
+    if os.getenv("OCI_RESOURCE_PRINCIPAL_VERSION"):
+        signer = oci.auth.signers.get_resource_principals_signer()
+        language_client = AIServiceLanguageClient(config={}, signer=signer)
+    else:
+        oci_conf = from_file()
+        language_client = AIServiceLanguageClient(oci_conf)
+    logger.info("OCI Language client ready.")
+except Exception:
+    logger.error("OCI init failed – sentiment disabled.", exc_info=True)
+    language_client = None
+
+
 
 # --------------------------------------------------------------------------- #
 # ----------------------------- /upload ------------------------------------- #
@@ -455,15 +518,49 @@ async def upload_audio(file: UploadFile = File(...)):
 
     # Transcription
     try:
-        if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
-            diarized = transcribe_with_gemini(temp_path, runtime_settings.llm_model)
+    #     if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
+    #         diarized = transcribe_with_gemini(temp_path, runtime_settings.llm_model)
         # else:
         #     diarized = transcriber.transcribe_and_diarize(temp_path)
+          
+        if runtime_settings.transcription_engine == TranscriptionEngine.gemini:
+            spm = get_spm(runtime_settings.llm_model)
+            # --- secure transcription ------------------------------------
+            mime, _ = mimetypes.guess_type(temp_path)
+            with open(temp_path, "rb") as f:
+                diarized = await spm.secure_transcribe_audio(f.read(),
+                                                             mime or "application/octet-stream")
+        # else:
+        #     diarized = transcriber.transcribe_and_diarize(temp_path)
+
+
+
     except Exception as e:
         logger.error("Transcription failed", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
+    # full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)
+
+    # diarized = assign_speaker_names(full_text, diarized, runtime_settings.llm_model)
+    # full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)  # Refresh full_text with updated names
+
+
     full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)
+
+    # -------- secure speaker remapping ---------------------------------
+    spm = get_spm(runtime_settings.llm_model)
+    mappings = await spm.secure_identify_speakers(full_text)
+    speaker_map = {m["old"]: m["new"] for m in mappings}
+
+    for seg in diarized:
+        if seg["speaker"] in speaker_map:
+            seg["speaker"] = speaker_map[seg["speaker"]]
+
+    full_text = "\n".join(f"{d['speaker']}: {d['text']}" for d in diarized)
+
+
+
+
 
     # OCI Sentiment
     oci_emotion, oci_aspects = "N/A", []
@@ -483,7 +580,10 @@ async def upload_audio(file: UploadFile = File(...)):
             logger.error("OCI sentiment failed", exc_info=True)
 
     # LLM report
-    report = generate_report(full_text)
+    # report = generate_report(full_text)
+
+    report = await spm.secure_generate_report(full_text)
+
 
     # --- post-processing ------------------------------------------------
     # 1) make sure riskWords is a non-empty list
@@ -557,7 +657,7 @@ def chat_endpoint(req: ChatRequest):
     )
     rpt = data.get("report_data", {})
     oci_emotion = data.get("oci_emotion", "N/A")
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+
     context = "\n".join([
         "You are a helpful assistant analysing a recorded call.",
         "--- Report ---",
@@ -593,7 +693,22 @@ def chat_endpoint(req: ChatRequest):
         raise HTTPException(status_code=503, detail="LLM service error.")
 
 # --------------------------------------------------------------------------- #
+# ------------------------------ /rag ---------------------------------- #
+
+
+@app.get("/rag")
+def rag_chat_ui():
+    """Serve the RAG chat UI HTML page"""
+    return FileResponse("static/rag_chat.html")
+
+@app.get("/rag_polling")
+def rag_chat_polling_ui():
+    """Serve the polling-based RAG chat UI HTML page"""
+    return FileResponse("static/rag_chat_polling.html")
+
+# --------------------------------------------------------------------------- #
 # ------------------------------ /rag_chat ---------------------------------- #
+
 class RAGChatRequest(BaseModel):
     question: str
     call_ids: List[str]
@@ -711,7 +826,7 @@ async def get_rag_chat_status(request_id: str):
     return status
 
 # --------------------------------------------------------------------------- #
-# Dev utilities
+# --------------------- Test Endpoints -------------------- #
 @app.get("/test_oci")
 def test_oci():
     if not language_client:
@@ -721,12 +836,6 @@ def test_oci():
     req = BatchDetectLanguageSentimentsDetails(documents=docs)
     resp = language_client.batch_detect_language_sentiments(req)
     return {"data": str(resp.data)}
-
-
-
-
-# from fastapi import FastAPI
-from db import query
 
 
 @app.get("/testdb")
