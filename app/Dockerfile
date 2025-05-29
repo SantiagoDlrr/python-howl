@@ -42,7 +42,7 @@ EXPOSE 8000
 
 
 #Uncomment below to use https
-# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "key.pem", "--ssl-certfile", "cert.pem"]
+# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "443", "--ssl-keyfile", "key.pem", "--ssl-certfile", "fullchain.pem"]
 
 # Uncomment below for local development
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
