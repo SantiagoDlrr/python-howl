@@ -45,100 +45,8 @@ else:
     logger.warning("HF_TOKEN not set - model downloads may fail")
 
 # --------------------------------------------------------------------------- #
-# Fake Database Connection (for testing without actual PostgreSQL)
+# Database Connection
 # --------------------------------------------------------------------------- #
-
-# Sample transcript data (mimicking what would come from a database)
-SAMPLE_TRANSCRIPTS = {
-    "call-123": {
-        "id": "call-123",
-        "date": "15/05/2023",
-        "duration": "00:05:23",
-        "transcript": [
-            {"speaker": "AGENT", "text": "Hello, thank you for calling customer support. How can I help you today?", "start": 0.0, "end": 4.5},
-            {"speaker": "CUSTOMER", "text": "Hi, I'm having trouble with my recent order. It was supposed to arrive yesterday but I haven't received it yet.", "start": 4.8, "end": 10.2},
-            {"speaker": "AGENT", "text": "I'm sorry to hear that. Let me check the status of your order. Can you provide your order number please?", "start": 10.5, "end": 15.0},
-            {"speaker": "CUSTOMER", "text": "Yes, it's ABC12345.", "start": 15.3, "end": 17.0},
-            {"speaker": "AGENT", "text": "Thank you. I can see your order was shipped on Monday, but there seems to be a delay with the courier. According to the tracking information, it should be delivered by end of day today.", "start": 17.5, "end": 25.0},
-            {"speaker": "CUSTOMER", "text": "That's a relief. I was worried it got lost.", "start": 25.3, "end": 28.0},
-            {"speaker": "AGENT", "text": "I understand your concern. If you don't receive it by tomorrow, please call us back and we'll file a claim with the shipping company.", "start": 28.5, "end": 35.0},
-            {"speaker": "CUSTOMER", "text": "Okay, thank you for checking. I appreciate your help.", "start": 35.5, "end": 38.0},
-            {"speaker": "AGENT", "text": "You're welcome. Is there anything else I can assist you with today?", "start": 38.5, "end": 41.0},
-            {"speaker": "CUSTOMER", "text": "No, that's all. Thank you.", "start": 41.5, "end": 43.0},
-            {"speaker": "AGENT", "text": "Thank you for calling. Have a great day!", "start": 43.5, "end": 46.0}
-        ]
-    },
-    "call-456": {
-        "id": "call-456",
-        "date": "20/05/2023",
-        "duration": "00:08:15",
-        "transcript": [
-            {"speaker": "AGENT", "text": "Thank you for calling technical support. My name is Alex. How may I assist you today?", "start": 0.0, "end": 5.0},
-            {"speaker": "CUSTOMER", "text": "Hi Alex, I'm having issues connecting my new printer to my WiFi network.", "start": 5.5, "end": 10.0},
-            {"speaker": "AGENT", "text": "I'd be happy to help you with that. What model of printer do you have?", "start": 10.5, "end": 14.0},
-            {"speaker": "CUSTOMER", "text": "It's the HP OfficeJet Pro 9015.", "start": 14.5, "end": 16.0},
-            {"speaker": "AGENT", "text": "Great. First, let's make sure your printer is in setup mode. There should be a blinking blue light on the control panel.", "start": 16.5, "end": 23.0},
-            {"speaker": "CUSTOMER", "text": "Yes, I see the blinking light.", "start": 23.5, "end": 25.0},
-            {"speaker": "AGENT", "text": "Perfect. Now on your computer or smartphone, you'll need to download the HP Smart app if you haven't already.", "start": 25.5, "end": 32.0},
-            {"speaker": "CUSTOMER", "text": "I have the app installed already.", "start": 32.5, "end": 34.0},
-            {"speaker": "AGENT", "text": "Excellent. Open the app and click on 'Add Printer'. The app should detect your printer in setup mode.", "start": 34.5, "end": 41.0},
-            {"speaker": "CUSTOMER", "text": "Okay, it found my printer. Now it's asking for my WiFi password.", "start": 41.5, "end": 45.0},
-            {"speaker": "AGENT", "text": "Go ahead and enter your WiFi password. Make sure it's entered correctly as passwords are case-sensitive.", "start": 45.5, "end": 51.0},
-            {"speaker": "CUSTOMER", "text": "Done. It says it's connecting now... Oh, it worked! The printer is now connected to my WiFi.", "start": 51.5, "end": 58.0},
-            {"speaker": "AGENT", "text": "That's great news! Let's make sure it's working properly. Can you try printing a test page?", "start": 58.5, "end": 63.0},
-            {"speaker": "CUSTOMER", "text": "Yes, the test page printed perfectly. Thank you so much for your help!", "start": 63.5, "end": 68.0},
-            {"speaker": "AGENT", "text": "You're welcome. Is there anything else I can help you with today?", "start": 68.5, "end": 71.0},
-            {"speaker": "CUSTOMER", "text": "No, that's all I needed. Thanks again.", "start": 71.5, "end": 73.0},
-            {"speaker": "AGENT", "text": "Thank you for calling technical support. Have a wonderful day!", "start": 73.5, "end": 77.0}
-        ]
-    }
-}
-
-# async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
-#     """
-#     Retrieve transcripts from PostgreSQL database using call IDs.
-
-#     Args:
-#         call_ids: List of call IDs to retrieve
-
-#     Returns:
-#         Dictionary mapping call_ids to their transcript data
-#     """
-#     logger.info(f"Retrieving transcripts for call IDs: {call_ids}")
-
-#     results = {}
-
-#     try:
-#         from db import query
-
-#         for call_id in call_ids:
-#             # Extract numeric ID from call-id format if needed
-#             numeric_id = call_id
-#             if call_id.startswith("call-"):
-#                 numeric_id = call_id.split("-")[1]
-
-#             # Use the PostgreSQL function to get transcript
-#             sql = f"SELECT get_transcript_by_call_id({numeric_id}) as transcript;"
-#             query_result = await query(sql)
-
-#             if query_result and len(query_result) > 0:
-#                 transcript_text = query_result[0].get('transcript')
-
-#                 if transcript_text:
-#                     # Create a transcript object with the retrieved text
-#                     results[call_id] = {
-#                         "id": call_id,
-#                         "date": "Current Date",
-#                         "duration": "Unknown",
-#                         "transcript": [
-#                             {"speaker": "TRANSCRIPT", "text": transcript_text, "start": 0.0, "end": 0.0}
-#                         ]
-#                     }
-#     except Exception as e:
-#         logger.error(f"Database query failed: {e}")
-
-#     return results
-
 
 async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
     """
@@ -233,23 +141,62 @@ def chunk_transcript(transcript: List[Dict[str, Any]], chunk_size: int = 3) -> L
     Returns:
         List of chunks, each containing segment data and metadata
     """
+    if not transcript:
+        logger.warning("Empty transcript provided to chunk_transcript")
+        return []
+    
     chunks = []
 
     for i in range(0, len(transcript), chunk_size):
         chunk_segments = transcript[i:i+chunk_size]
 
-        # Create a single text from the segments
-        chunk_text = " ".join([f"{seg['speaker']}: {seg['text']}" for seg in chunk_segments])
+        # Create a formatted text from the segments with better readability
+        chunk_lines = []
+        for seg in chunk_segments:
+            speaker = seg.get('speaker', 'UNKNOWN')
+            text = seg.get('text', '')
+            chunk_lines.append(f"{speaker}: {text}")
+        
+        chunk_text = "\n".join(chunk_lines)
 
-        # Store chunk with metadata
+        # Store chunk with metadata including individual segments for better attribution
         chunks.append({
             "text": chunk_text,
             "start_segment": i,
             "end_segment": min(i + chunk_size - 1, len(transcript) - 1),
-            "segments": chunk_segments
+            "segments": chunk_segments,
+            "segment_count": len(chunk_segments)
         })
 
+    logger.info(f"Created {len(chunks)} chunks from transcript with {len(transcript)} segments")
     return chunks
+
+def format_source_attribution(chunk: Dict[str, Any], call_id: str, score: float) -> str:
+    """
+    Format a source attribution with specific segments for better readability.
+    
+    Args:
+        chunk: The relevant chunk with segments
+        call_id: The call ID
+        score: Relevance score
+        
+    Returns:
+        Formatted source attribution string
+    """
+    segments = chunk.get('segments', [])
+    
+    # Create a readable format showing the specific conversation parts
+    attribution_lines = [
+        f"**Source: Call {call_id} (Relevance: {score:.1%})**",
+        ""
+    ]
+    
+    for segment in segments:
+        speaker = segment.get('speaker', 'UNKNOWN')
+        text = segment.get('text', '')
+        attribution_lines.append(f"**{speaker}:** {text}")
+    
+    return "\n".join(attribution_lines)
 
 # --------------------------------------------------------------------------- #
 # Embeddings and Semantic Search
@@ -364,11 +311,18 @@ def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
     Returns:
         Dictionary containing the answer and source attributions
     """
-    # Create context from relevant chunks
-    context = "\n\n".join([
-        f"From Call {chunk['call_id']}:\n{chunk['text']}"
-        for chunk in relevant_chunks
-    ])
+    # Create context from relevant chunks with better formatting
+    context_parts = []
+    for chunk in relevant_chunks:
+        context_parts.append(f"From Call {chunk['call_id']}:")
+        # Format each segment properly
+        for segment in chunk.get('segments', []):
+            speaker = segment.get('speaker', 'UNKNOWN')
+            text = segment.get('text', '')
+            context_parts.append(f"{speaker}: {text}")
+        context_parts.append("")  # Empty line between calls
+    
+    context = "\n".join(context_parts)
 
     # Create prompt for the model
     prompt = f"""
@@ -381,7 +335,7 @@ def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
     Question: {question}
 
     Provide a clear and concise answer. If the answer is not in the context, say "I don't have enough information to answer this question."
-    Include specific references to which call(s) you got the information from.
+    Include specific references to which call(s) you got the information from and quote relevant parts of the conversation.
     """
 
     try:
@@ -390,14 +344,19 @@ def generate_rag_response(question: str, relevant_chunks: List[Dict[str, Any]],
         response = model.generate_content(prompt)
         answer = response.text.strip() if response.text else ""
 
-        # Create source attributions
+        # Create source attributions with better formatting
         sources = []
         for chunk in relevant_chunks:
-            if chunk["score"] > 0.5:  # Only include relevant sources
+            if chunk["score"] > 0.3:  # Lower threshold to include more relevant sources
+                # Format the source with specific conversation segments
+                formatted_source = format_source_attribution(chunk, chunk["call_id"], chunk["score"])
                 sources.append({
                     "call_id": chunk["call_id"],
-                    "text": chunk["text"],
-                    "score": chunk["score"]
+                    "formatted_text": formatted_source,
+                    "raw_segments": chunk.get('segments', []),
+                    "score": chunk["score"],
+                    "start_segment": chunk.get("start_segment", 0),
+                    "end_segment": chunk.get("end_segment", 0)
                 })
 
         return {
@@ -500,3 +459,52 @@ def create_rag_chat_request() -> str:
     # Create a new request
     request_id = request_tracker.create_request()
     return request_id
+
+# --------------------------------------------------------------------------- #
+# Test Function
+# --------------------------------------------------------------------------- #
+
+async def test_transcript_parsing(call_id: str):
+    """
+    Test function to verify transcript parsing is working correctly.
+    
+    Args:
+        call_id: The call ID to test with
+    """
+    print(f"Testing transcript parsing for call ID: {call_id}")
+    
+    try:
+        # Test the database retrieval
+        transcripts = await get_transcripts_from_db([call_id])
+        
+        if not transcripts:
+            print("❌ No transcripts retrieved")
+            return
+            
+        print(f"✅ Retrieved transcript data for {len(transcripts)} calls")
+        
+        # Test the chunking
+        chunked_transcripts = process_transcripts_for_embeddings(transcripts)
+        
+        for call_id, chunks in chunked_transcripts.items():
+            print(f"\n📞 Call {call_id}:")
+            print(f"  - Number of chunks: {len(chunks)}")
+            
+            # Show first chunk as example
+            if chunks:
+                first_chunk = chunks[0]
+                print(f"  - First chunk segments: {first_chunk['start_segment']} to {first_chunk['end_segment']}")
+                print(f"  - First chunk text preview: {first_chunk['text'][:100]}...")
+                
+                # Show individual segments in first chunk
+                print(f"  - Segments in first chunk:")
+                for i, segment in enumerate(first_chunk['segments']):
+                    speaker = segment.get('speaker', 'UNKNOWN')
+                    text = segment.get('text', '')[:50]
+                    print(f"    {i+1}. {speaker}: {text}...")
+                    
+    except Exception as e:
+        print(f"❌ Error during testing: {e}")
+        import traceback
+        traceback.print_exc()
+
