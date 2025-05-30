@@ -94,6 +94,52 @@ SAMPLE_TRANSCRIPTS = {
     }
 }
 
+# async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
+#     """
+#     Retrieve transcripts from PostgreSQL database using call IDs.
+
+#     Args:
+#         call_ids: List of call IDs to retrieve
+
+#     Returns:
+#         Dictionary mapping call_ids to their transcript data
+#     """
+#     logger.info(f"Retrieving transcripts for call IDs: {call_ids}")
+
+#     results = {}
+
+#     try:
+#         from db import query
+
+#         for call_id in call_ids:
+#             # Extract numeric ID from call-id format if needed
+#             numeric_id = call_id
+#             if call_id.startswith("call-"):
+#                 numeric_id = call_id.split("-")[1]
+
+#             # Use the PostgreSQL function to get transcript
+#             sql = f"SELECT get_transcript_by_call_id({numeric_id}) as transcript;"
+#             query_result = await query(sql)
+
+#             if query_result and len(query_result) > 0:
+#                 transcript_text = query_result[0].get('transcript')
+
+#                 if transcript_text:
+#                     # Create a transcript object with the retrieved text
+#                     results[call_id] = {
+#                         "id": call_id,
+#                         "date": "Current Date",
+#                         "duration": "Unknown",
+#                         "transcript": [
+#                             {"speaker": "TRANSCRIPT", "text": transcript_text, "start": 0.0, "end": 0.0}
+#                         ]
+#                     }
+#     except Exception as e:
+#         logger.error(f"Database query failed: {e}")
+
+#     return results
+
+
 async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
     """
     Retrieve transcripts from PostgreSQL database using call IDs.
@@ -117,23 +163,56 @@ async def get_transcripts_from_db(call_ids: List[str]) -> Dict[str, Any]:
             if call_id.startswith("call-"):
                 numeric_id = call_id.split("-")[1]
 
-            # Use the PostgreSQL function to get transcript
-            sql = f"SELECT get_transcript_by_call_id({numeric_id}) as transcript;"
+            # Use the PostgreSQL function to get diarized transcript instead of regular transcript
+            sql = f"SELECT get_transcript_by_call_id({numeric_id}) as diarized_transcript;"
             query_result = await query(sql)
 
             if query_result and len(query_result) > 0:
-                transcript_text = query_result[0].get('transcript')
+                transcript_data = query_result[0].get('diarized_transcript')
 
-                if transcript_text:
-                    # Create a transcript object with the retrieved text
-                    results[call_id] = {
-                        "id": call_id,
-                        "date": "Current Date",
-                        "duration": "Unknown",
-                        "transcript": [
-                            {"speaker": "TRANSCRIPT", "text": transcript_text, "start": 0.0, "end": 0.0}
-                        ]
-                    }
+                if transcript_data:
+                    try:
+                        # Parse the transcript data
+                        # Handle the "TRANSCRIPT: " prefix if it exists
+                        if isinstance(transcript_data, str):
+                            if transcript_data.startswith("TRANSCRIPT: "):
+                                json_str = transcript_data[len("TRANSCRIPT: "):]
+                            else:
+                                json_str = transcript_data
+                            
+                            # Parse the JSON
+                            parsed_transcript = json.loads(json_str)
+                        else:
+                            # If it's already a dict/list (depending on how your DB returns it)
+                            parsed_transcript = transcript_data
+
+                        # Convert to the expected format with proper structure
+                        formatted_transcript = []
+                        for i, segment in enumerate(parsed_transcript):
+                            formatted_segment = {
+                                "speaker": segment.get("speaker", "UNKNOWN"),
+                                "text": segment.get("text", ""),
+                                "start": segment.get("start", i * 5.0),  # Default timing if not available
+                                "end": segment.get("end", (i + 1) * 5.0)
+                            }
+                            formatted_transcript.append(formatted_segment)
+
+                        # Create a properly formatted transcript object
+                        results[call_id] = {
+                            "id": call_id,
+                            "date": "Current Date",  # You might want to get this from the DB too
+                            "duration": "Unknown",   # You might want to get this from the DB too
+                            "transcript": formatted_transcript
+                        }
+                        
+                        logger.info(f"Successfully parsed transcript for call {call_id} with {len(formatted_transcript)} segments")
+                        
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse JSON for call {call_id}: {e}")
+                        logger.error(f"Raw data: {transcript_data}")
+                    except Exception as e:
+                        logger.error(f"Error processing transcript for call {call_id}: {e}")
+
     except Exception as e:
         logger.error(f"Database query failed: {e}")
 
