@@ -16,3 +16,5 @@ node_modules
 *.mp4
 *.avi
 *.wav
+
+model_cache/

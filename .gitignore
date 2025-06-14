@@ -44,10 +44,7 @@ app/cert.pem
 app/key.pem
 app/.coverage
 app/fullchain.pem
-# Model caches (optional, but can be large)
-# You might need these if you cache models locally outside the project dir
-# Adjust paths based on your system if needed
-# $HOME/.cache/torch/
-# $HOME/.cache/huggingface/
-# $HOME/.cache/whisperx/
-# $HOME/.cache/pyannote/
+
+model_cache/
+
+.pytest_cache/
