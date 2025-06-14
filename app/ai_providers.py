@@ -1,5 +1,6 @@
 """
-ai_providers.py - Fixed version with OpenAI transcription handling
+ai_providers.py 
+
 """
 
 import os

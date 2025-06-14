@@ -32,20 +32,6 @@ jobs:
         pip install -r app/requirements2.txt
         pip install pytest pytest-cov
 
-    - name: Set up OCI configuration
-      if: env.OCI_USER_OCID != ''
-      run: |
-        mkdir -p ~/.oci
-        echo "[DEFAULT]" > ~/.oci/config
-        echo "user=${{ secrets.OCI_USER_OCID }}" >> ~/.oci/config
-        echo "fingerprint=${{ secrets.OCI_FINGERPRINT }}" >> ~/.oci/config
-        echo "tenancy=${{ secrets.OCI_TENANCY_OCID }}" >> ~/.oci/config
-        echo "region=${{ secrets.OCI_REGION }}" >> ~/.oci/config
-        echo "key_file=~/.oci/oci_api_key.pem" >> ~/.oci/config
-        echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
-        chmod 600 ~/.oci/oci_api_key.pem
-      env:
-        OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
 
     - name: Run tests with coverage
       env:

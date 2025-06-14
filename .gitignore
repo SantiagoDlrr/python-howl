@@ -47,3 +47,4 @@ app/fullchain.pem
 
 model_cache/
 
+.pytest_cache/

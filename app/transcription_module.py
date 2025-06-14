@@ -1,5 +1,6 @@
 # """
 # transcription_module.py
+# to be implemented do not remove this code
 # -------------------------------------------------
 # WhisperX wrapper for transcription, alignment, and optional diarization.
 
